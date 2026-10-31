@@ -298,6 +298,7 @@ private final class AppleDocumentationButton: NSButton {
 private final class EventTypeCell: NSTableCellView {
     let toggle = NSButton(title: "Pause", target: nil, action: nil)
     let eventName = NSTextField(labelWithString: "")
+    let documentationButton = AppleDocumentationButton(frame: .zero)
     let summary = NSTextField(labelWithString: "")
     let badge = NSTextField(labelWithString: "")
 
@@ -327,7 +328,7 @@ private final class EventTypeCell: NSTableCellView {
         badge.setContentHuggingPriority(.required, for: .horizontal)
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let stack = NSStackView(views: [toggle, eventName, summary, badge])
+        let stack = NSStackView(views: [toggle, eventName, documentationButton, summary, badge])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 8
@@ -346,38 +347,59 @@ private final class EventTypeCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
 }
 
-private func detailCell(_ text: String, tooltip: String? = nil) -> NSTableCellView {
+private func detailCell(_ detail: EventDetail, eventType: String?) -> NSTableCellView {
     let cell = NSTableCellView()
-    let field = NSTextField(labelWithString: text)
+    let field = NSTextField(labelWithString: "\(detail.name): \(detail.value)")
     field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
     field.lineBreakMode = .byTruncatingTail
-    field.toolTip = tooltip ?? text
-    field.translatesAutoresizingMaskIntoConstraints = false
-    cell.addSubview(field)
+    field.toolTip = "\(detail.name): \(detail.value)"
+    field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    let info = AppleDocumentationButton(frame: .zero)
+    info.configure(symbol: detail.name, eventType: eventType)
+    let stack = NSStackView(views: [field, info])
+    stack.orientation = .horizontal
+    stack.alignment = .centerY
+    stack.spacing = 5
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    cell.addSubview(stack)
     NSLayoutConstraint.activate([
-        field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 3),
-        field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
-        field.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 3),
+        stack.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
+        stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
     ])
     return cell
 }
 
 /// History values wrap instead of truncating, so captured values remain readable
 /// and selectable, even when the payload is wider than the window.
-private func historyCell(_ text: String) -> NSTableCellView {
+private func historyCell(_ text: String,
+                         documentationSymbol: String? = nil,
+                         eventType: String? = nil) -> NSTableCellView {
     let cell = NSTableCellView()
     let field = NSTextField(wrappingLabelWithString: text)
     field.isSelectable = true
     field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
     field.maximumNumberOfLines = 0
     field.toolTip = text
-    field.translatesAutoresizingMaskIntoConstraints = false
-    cell.addSubview(field)
+    field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+    let info = AppleDocumentationButton(frame: .zero)
+    if let documentationSymbol {
+        info.configure(symbol: documentationSymbol, eventType: eventType)
+    } else {
+        info.isHidden = true
+    }
+    let stack = NSStackView(views: [field, info])
+    stack.orientation = .horizontal
+    stack.alignment = .top
+    stack.spacing = 5
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    cell.addSubview(stack)
     NSLayoutConstraint.activate([
-        field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-        field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
-        field.topAnchor.constraint(equalTo: cell.topAnchor, constant: 4),
-        field.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -4)
+        stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+        stack.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
+        stack.topAnchor.constraint(equalTo: cell.topAnchor, constant: 4),
+        stack.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -4)
     ])
     return cell
 }
@@ -419,14 +441,22 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
         title.lineBreakMode = .byTruncatingTail
         title.toolTip = record.name
         title.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(title)
+        let titleDocumentation = AppleDocumentationButton(frame: .zero)
+        titleDocumentation.configure(symbol: record.name)
+        let titleRow = NSStackView(views: [title, titleDocumentation])
+        titleRow.orientation = .horizontal
+        titleRow.alignment = .centerY
+        titleRow.spacing = 5
+        titleRow.translatesAutoresizingMaskIntoConstraints = false
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        host.addSubview(titleRow)
         host.addSubview(scroll)
         panel.contentView = host
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: host.topAnchor, constant: 12),
-            title.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 12),
-            title.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -12),
-            scroll.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 10),
+            titleRow.topAnchor.constraint(equalTo: host.topAnchor, constant: 12),
+            titleRow.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 12),
+            titleRow.trailingAnchor.constraint(lessThanOrEqualTo: host.trailingAnchor, constant: -12),
+            scroll.topAnchor.constraint(equalTo: titleRow.bottomAnchor, constant: 10),
             scroll.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -8),
             scroll.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 8),
             scroll.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -8)
@@ -480,7 +510,8 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
             return historyCell("Occurrence \(index + 1) — \(occurrence.summary)")
         }
         guard let detail = item as? EventDetail else { return nil }
-        return historyCell("\(detail.name): \(detail.value)")
+        return historyCell("\(detail.name): \(detail.value)",
+                           documentationSymbol: detail.name, eventType: record.name)
     }
 }
 
@@ -655,11 +686,21 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
         return !((item as? EventDetail)?.children.isEmpty ?? true)
     }
 
+    private func parentEventType(for detail: EventDetail) -> String? {
+        var current: Any = detail
+        while let parent = outline.parent(forItem: current) {
+            if let type = parent as? EventTypeRecord { return type.name }
+            current = parent
+        }
+        return nil
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         if let type = item as? EventTypeRecord {
             let cell = EventTypeCell(frame: .zero)
             cell.eventName.stringValue = type.name
             cell.eventName.toolTip = type.name
+            cell.documentationButton.configure(symbol: type.name)
             cell.summary.stringValue = type.latest?.summary ?? ""
             cell.summary.toolTip = type.latest?.summary
             cell.toggle.title = type.isEnabled ? "Pause" : "Play"
@@ -672,6 +713,6 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
             return cell
         }
         guard let detail = item as? EventDetail else { return nil }
-        return detailCell("\(detail.name): \(detail.value)")
+        return detailCell(detail, eventType: parentEventType(for: detail))
     }
 }
