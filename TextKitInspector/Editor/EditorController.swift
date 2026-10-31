@@ -65,13 +65,15 @@ final class EditorController: NSObject, NSTextViewDelegate, NSLayoutManagerDeleg
             guard let self else { return }
             self.changed()
             let range = self.textView.selectedRange()
-            self.report("InspectorTextView.selectionDidMove", NSStringFromRange(range), [
+            self.onEvent?("InspectorTextView.selectionDidMove", NSStringFromRange(range), [
+                EventDetail("callback.source", String(reflecting: type(of: self.textView))),
+                EventDetail("callback.property", "InspectorTextView.selectionDidMove"),
                 EventPayload.range("NSTextView.selectedRange()", range),
                 EventDetail("NSTextStorage.length", String(self.textStorage.length))
             ])
         }
         text.onInputEvent = { [weak self] name, summary, details in
-            self?.report(name, summary, details)
+            self?.onEvent?(name, summary, details)
         }
         layout.delegate = self
 
