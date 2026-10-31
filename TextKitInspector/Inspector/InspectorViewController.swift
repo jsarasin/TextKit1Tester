@@ -43,12 +43,29 @@ private final class InspectorEditField: NSTextField {
     }
 }
 
+/// Paints the class accent rail without the deprecated NSBox border API.
+private final class InspectorAccentView: NSView {
+    var accentColor: NSColor = .systemGray {
+        didSet { needsDisplay = true }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        accentColor.setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 3, yRadius: 3).fill()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+}
+
 /// AppKit may temporarily assign zero width to NSOutlineView cell views while
 /// measuring columns. Size child controls from their actual row frame instead
 /// of constraining both edges with positive insets (which is unsatisfiable at 0).
 private final class FlexibleInspectorCell: NSTableCellView {
     var trailingBadge: NSTextField?
-    var accentBar: NSBox?
+    var accentBar: InspectorAccentView?
     var embeddedContent: NSView?
 
     override func layout() {
@@ -98,13 +115,13 @@ private final class FlexibleInspectorCell: NSTableCellView {
 private final class InspectorCategoryRowView: NSTableRowView {
     override func drawBackground(in dirtyRect: NSRect) {
         NSColor.controlBackgroundColor.setFill()
-        NSRectFill(bounds)
+        NSBezierPath.fill(bounds)
 
         NSColor.controlAccentColor.withAlphaComponent(0.15).setFill()
-        NSRectFill(bounds)
+        NSBezierPath.fill(bounds)
 
         NSColor.separatorColor.setFill()
-        NSRectFill(NSRect(x: bounds.minX, y: bounds.minY,
+        NSBezierPath.fill(NSRect(x: bounds.minX, y: bounds.minY,
                           width: bounds.width, height: 1))
     }
 }
@@ -532,11 +549,8 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
 
     private func classHeaderCell(_ group: InspectionGroup) -> NSView {
         let cell = FlexibleInspectorCell()
-        let bar = NSBox()
-        bar.boxType = .custom
-        bar.borderType = .noBorder
-        bar.cornerRadius = 3
-        bar.fillColor = classAccent(for: group.key)
+        let bar = InspectorAccentView()
+        bar.accentColor = classAccent(for: group.key)
 
         let title = NSTextField(labelWithString: group.title)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
