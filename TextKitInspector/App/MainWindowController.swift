@@ -50,6 +50,9 @@ final class MainWindowController: NSWindowController {
         split.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(split)
         let editorHost = NSView()
+        // NSSplitView owns the pane widths. Never synthesize autoresizing-mask
+        // constraints on this pane: they can force the divider back on drag.
+        editorHost.translatesAutoresizingMaskIntoConstraints = false
         editorHost.addSubview(editor.scrollView)
         editor.scrollView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
