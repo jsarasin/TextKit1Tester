@@ -1,0 +1,78 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1;
+ classes = {};
+ objectVersion = 56;
+ objects = {
+/* Begin PBXBuildFile section */
+  C00000000000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* main.swift */; };
+  C00000000000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* AppDelegate.swift */; };
+  C00000000000000000000003 /* MainWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000003 /* MainWindowController.swift */; };
+  C00000000000000000000004 /* EditorController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000004 /* EditorController.swift */; };
+  C00000000000000000000005 /* InspectorTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000005 /* InspectorTextView.swift */; };
+  C00000000000000000000006 /* SampleDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000006 /* SampleDocument.swift */; };
+  C00000000000000000000007 /* InspectionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007 /* InspectionContext.swift */; };
+  C00000000000000000000008 /* InspectorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* InspectorViewController.swift */; };
+  C00000000000000000000009 /* SampleImage.png in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009 /* SampleImage.png */; };
+/* End PBXBuildFile section */
+/* Begin PBXFileReference section */
+  B00000000000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/main.swift"; sourceTree = "<group>"; };
+  B00000000000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/AppDelegate.swift"; sourceTree = "<group>"; };
+  B00000000000000000000003 /* MainWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/MainWindowController.swift"; sourceTree = "<group>"; };
+  B00000000000000000000004 /* EditorController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Editor/EditorController.swift"; sourceTree = "<group>"; };
+  B00000000000000000000005 /* InspectorTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Editor/InspectorTextView.swift"; sourceTree = "<group>"; };
+  B00000000000000000000006 /* SampleDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Editor/SampleDocument.swift"; sourceTree = "<group>"; };
+  B00000000000000000000007 /* InspectionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Inspector/InspectionContext.swift"; sourceTree = "<group>"; };
+  B00000000000000000000008 /* InspectorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Inspector/InspectorViewController.swift"; sourceTree = "<group>"; };
+  B00000000000000000000009 /* SampleImage.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Resources/SampleImage.png"; sourceTree = "<group>"; };
+  A00000000000000000000007 /* TextKitInspector.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TextKitInspector.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+/* Begin PBXGroup section */
+  A00000000000000000000008 = {isa = PBXGroup; children = (A00000000000000000000009, A0000000000000000000000A,); sourceTree = "<group>"; };
+  A00000000000000000000009 = {isa = PBXGroup; children = (
+   B00000000000000000000001 /* main.swift */,
+   B00000000000000000000002 /* AppDelegate.swift */,
+   B00000000000000000000003 /* MainWindowController.swift */,
+   B00000000000000000000004 /* EditorController.swift */,
+   B00000000000000000000005 /* InspectorTextView.swift */,
+   B00000000000000000000006 /* SampleDocument.swift */,
+   B00000000000000000000007 /* InspectionContext.swift */,
+   B00000000000000000000008 /* InspectorViewController.swift */,
+   B00000000000000000000009 /* SampleImage.png */,
+  ); path = TextKitInspector; sourceTree = "<group>"; };
+  A0000000000000000000000A = {isa = PBXGroup; children = (A00000000000000000000007,); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+/* Begin PBXNativeTarget section */
+  A00000000000000000000002 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000004; buildPhases = (A00000000000000000000005, A00000000000000000000006,); buildRules = (); dependencies = (); name = TextKitInspector; productName = TextKitInspector; productReference = A00000000000000000000007; productType = "com.apple.product-type.application"; };
+/* End PBXNativeTarget section */
+/* Begin PBXProject section */
+  A00000000000000000000001 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {A00000000000000000000002 = {CreatedOnToolsVersion = 16.0;}; };}; buildConfigurationList = A00000000000000000000003; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = A00000000000000000000008; productRefGroup = A0000000000000000000000A; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000002,); };
+/* End PBXProject section */
+/* Begin PBXResourcesBuildPhase section */
+  A00000000000000000000006 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000009 /* SampleImage.png */,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+/* Begin PBXSourcesBuildPhase section */
+  A00000000000000000000005 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+   C00000000000000000000001 /* main.swift in Sources */,
+   C00000000000000000000002 /* AppDelegate.swift in Sources */,
+   C00000000000000000000003 /* MainWindowController.swift in Sources */,
+   C00000000000000000000004 /* EditorController.swift in Sources */,
+   C00000000000000000000005 /* InspectorTextView.swift in Sources */,
+   C00000000000000000000006 /* SampleDocument.swift in Sources */,
+   C00000000000000000000007 /* InspectionContext.swift in Sources */,
+   C00000000000000000000008 /* InspectorViewController.swift in Sources */,
+  ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+/* Begin XCBuildConfiguration section */
+  A0000000000000000000000B = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 15.0; SWIFT_VERSION = 5.0; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; DEBUG_INFORMATION_FORMAT = dwarf; GCC_OPTIMIZATION_LEVEL = 0; ENABLE_TESTABILITY = YES;}; name = Debug; };
+  A0000000000000000000000C = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; SDKROOT = macosx; MACOSX_DEPLOYMENT_TARGET = 15.0; SWIFT_VERSION = 5.0; SWIFT_COMPILATION_MODE = wholemodule; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";}; name = Release; };
+  A0000000000000000000000D = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = "com.macnote.TextKitInspector"; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_NSPrincipalClass = NSApplication; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools"; SWIFT_VERSION = 5.0; CODE_SIGNING_ALLOWED = NO; ARCHS = arm64; TARGETED_DEVICE_FAMILY = "1";}; name = Debug; };
+  A0000000000000000000000E = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = "com.macnote.TextKitInspector"; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_NSPrincipalClass = NSApplication; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools"; SWIFT_VERSION = 5.0; CODE_SIGNING_ALLOWED = NO; ARCHS = arm64; TARGETED_DEVICE_FAMILY = "1";}; name = Release; };
+/* End XCBuildConfiguration section */
+/* Begin XCConfigurationList section */
+  A00000000000000000000003 = {isa = XCConfigurationList; buildConfigurations = (A0000000000000000000000B, A0000000000000000000000C,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+  A00000000000000000000004 = {isa = XCConfigurationList; buildConfigurations = (A0000000000000000000000D, A0000000000000000000000E,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+ };
+ rootObject = A00000000000000000000001 /* Project object */;
+}
