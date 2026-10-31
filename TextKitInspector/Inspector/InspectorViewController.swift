@@ -98,10 +98,10 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         // header, user-adjustable column widths, keyboard navigation, and
         // visible-row reuse rather than rebuilding hundreds of stack views.
         nameColumn.title = "Property"
-        nameColumn.width = 215
-        nameColumn.minWidth = 150
+        nameColumn.width = 195
+        nameColumn.minWidth = 140
         valueColumn.title = "Value"
-        valueColumn.width = 310
+        valueColumn.width = 330
         valueColumn.minWidth = 160
         outline.addTableColumn(nameColumn)
         outline.addTableColumn(valueColumn)
@@ -110,6 +110,7 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         outline.indentationPerLevel = 12
         outline.rowHeight = 30
         outline.allowsColumnResizing = true
+        outline.allowsColumnReordering = false
         outline.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         outline.headerView = NSTableHeaderView()
         outline.usesAlternatingRowBackgroundColors = true
