@@ -3,6 +3,8 @@ import AppKit
 final class MainWindowController: NSWindowController {
     private let editor = EditorController()
     private let inspector = InspectorViewController()
+    // Retain the native split-view controller for the window's lifetime.
+    private let splitController = NSSplitViewController()
     private let status = NSTextField(labelWithString: "")
 
     convenience init() {
@@ -44,11 +46,13 @@ final class MainWindowController: NSWindowController {
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(toolbar)
 
-        let split = NSSplitView()
+        // Use AppKit's split-view controller to manage pane sizing.
+        // A generic NSSplitViewItem has no sidebar-specific width cap.
+        let split = splitController.splitView
         split.isVertical = true
         split.dividerStyle = .thin
-        split.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(split)
+        splitController.view.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(splitController.view)
         let editorHost = NSView()
         // NSSplitView owns the pane widths. Never synthesize autoresizing-mask
         // constraints on this pane: they can force the divider back on drag.
@@ -63,13 +67,26 @@ final class MainWindowController: NSWindowController {
         ])
         // The exhaustive property inspector lives to the LEFT of the document.
         // Drag the divider to make it wider; editing content stays on the right.
-        split.addArrangedSubview(inspector.view)
-        split.addArrangedSubview(editorHost)
-        // No minimum or maximum pane widths. Both sides can be resized freely,
-        // including a 50/50 split (or almost the entire window for either pane).
-        // Lower the content compression/hugging priorities so nested controls
-        // cannot force NSSplitView to snap its divider back.
-        for pane in [inspector.view, editorHost] {
+        let editorPaneController = NSViewController()
+        editorPaneController.view = editorHost
+
+        let inspectorItem = NSSplitViewItem(viewController: inspector)
+        inspectorItem.minimumThickness = 0
+        inspectorItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
+        inspectorItem.canCollapse = false
+        inspectorItem.preferredThicknessFraction = 0.5
+
+        let editorItem = NSSplitViewItem(viewController: editorPaneController)
+        editorItem.minimumThickness = 0
+        editorItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
+        editorItem.canCollapse = false
+
+        splitController.addSplitViewItem(inspectorItem)
+        splitController.addSplitViewItem(editorItem)
+
+        // Let the split controller determine both pane widths, rather than
+        // adopting the document text view's initial 780-point content size.
+        for pane in [inspector.view, editorHost, editor.scrollView] {
             pane.setContentHuggingPriority(.defaultLow, for: .horizontal)
             pane.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
@@ -81,21 +98,15 @@ final class MainWindowController: NSWindowController {
         NSLayoutConstraint.activate([
             toolbar.topAnchor.constraint(equalTo: content.topAnchor, constant: 10),
             toolbar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            split.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 10),
-            split.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 6),
-            split.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -6),
-            status.topAnchor.constraint(equalTo: split.bottomAnchor, constant: 6),
+            splitController.view.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 10),
+            splitController.view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 6),
+            splitController.view.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -6),
+            status.topAnchor.constraint(equalTo: splitController.view.bottomAnchor, constant: 6),
             status.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 13),
             status.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -13),
             status.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -7),
             status.heightAnchor.constraint(equalToConstant: 17)
         ])
-        // Set the initial position once, after layout, to half the available width.
-        // This does not run on subsequent resizes or selection changes.
-        DispatchQueue.main.async { [weak split] in
-            guard let split, split.bounds.width > 0 else { return }
-            split.setPosition(split.bounds.midX, ofDividerAt: 0)
-        }
     }
 
     private func refreshInspector() {
