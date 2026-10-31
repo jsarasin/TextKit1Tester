@@ -14,6 +14,7 @@
   C00000000000000000000007 /* InspectionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007 /* InspectionContext.swift */; };
   C00000000000000000000008 /* InspectorViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* InspectorViewController.swift */; };
   C00000000000000000000009 /* SampleImage.png in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009 /* SampleImage.png */; };
+  C0000000000000000000000A /* EventTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* EventTracker.swift */; };
 /* End PBXBuildFile section */
 /* Begin PBXFileReference section */
   B00000000000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/main.swift"; sourceTree = "<group>"; };
@@ -25,6 +26,7 @@
   B00000000000000000000007 /* InspectionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Inspector/InspectionContext.swift"; sourceTree = "<group>"; };
   B00000000000000000000008 /* InspectorViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Inspector/InspectorViewController.swift"; sourceTree = "<group>"; };
   B00000000000000000000009 /* SampleImage.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Resources/SampleImage.png"; sourceTree = "<group>"; };
+  B0000000000000000000000A /* EventTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Events/EventTracker.swift"; sourceTree = "<group>"; };
   A00000000000000000000007 /* TextKitInspector.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TextKitInspector.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 /* Begin PBXGroup section */
@@ -39,6 +41,7 @@
    B00000000000000000000007 /* InspectionContext.swift */,
    B00000000000000000000008 /* InspectorViewController.swift */,
    B00000000000000000000009 /* SampleImage.png */,
+   B0000000000000000000000A /* EventTracker.swift */,
   ); path = TextKitInspector; sourceTree = "<group>"; };
   A0000000000000000000000A = {isa = PBXGroup; children = (A00000000000000000000007,); name = Products; sourceTree = "<group>"; };
 /* End PBXGroup section */
@@ -61,6 +64,7 @@
    C00000000000000000000006 /* SampleDocument.swift in Sources */,
    C00000000000000000000007 /* InspectionContext.swift in Sources */,
    C00000000000000000000008 /* InspectorViewController.swift in Sources */,
+   C0000000000000000000000A /* EventTracker.swift in Sources */,
   ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 /* Begin XCBuildConfiguration section */
