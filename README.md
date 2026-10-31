@@ -22,25 +22,34 @@ There are no package dependencies, accounts, plugins, or servers. The deployment
 
 ## Event tracker
 
-The editor's lower pane contains a live event tracker. One row appears for each
-**event type** observed, with the latest summary and a right-side unread badge
-counting occurrences since that type was selected or expanded. Expand a type to
-see its latest captured payload as a property hierarchy. **Double-click** its
-row to open a separate window with its **five most recent occurrences**, each
-including a timestamp and expandable, selectable payload. No older occurrences
-are stored, and there is no disk logging.
+The editor's lower pane contains a live event tracker. **Drag the thin divider**
+above it vertically to resize the event panel without changing the 50/50
+editor/inspector column widths. One row appears for each **event type**, showing
+the exact AppKit method or notification name, a summary with original property
+names, and a right-side unread badge counting occurrences since the type was
+selected or expanded. Expand a row to inspect its latest captured properties.
+**Double-click** a row to open a floating utility panel that stays above the main
+window, displays the full event type prominently at the top, and contains
+only the **five most recent occurrences** with expandable, selectable payloads.
+No received-date or time values are displayed, and no older events are retained
+or logged to disk.
 
 - **Pause All / Resume All** above the list stops or resumes recording globally.
-- **Pause / Play** on a particular row independently suppresses or resumes that
-  event type. Suppressed occurrences do not increment unread counts or history.
-- Captured event families include key/mouse/drag/scroll `NSEvent` input;
-  selection updates; text-change, begin/end editing and command callbacks;
-  proposed text replacements; typing-attribute changes; text-storage
-  will/did-process-editing notifications; scroll-bounds notifications; and
-  TextKit 1 layout invalidation and completion delegate callbacks.
+- **Pause / Play** on a row independently suppresses or resumes that event type.
+  Suppressed occurrences do not increment unread counts or history.
+- **Clear** removes all event-type rows, unread counts, and five-event histories,
+  closing any open history panels. It leaves the global Pause/Resume state
+  unchanged; event types reappear enabled when new occurrences are received.
+- Captured event families include `InspectorTextView.keyDown(with:)` and other
+  mouse/keyboard/scroll methods, `NSTextViewDelegate` and
+  `NSLayoutManagerDelegate` callbacks, `NSTextStorage` editing notifications,
+  `NSTextView` typing attribute notifications, and scroll-bounds notifications.
+  Details use original parameter and object/class names, such as
+  `NSEvent.keyCode`, `NSTextStorage.editedRange`, and
+  `Notification.userInfo`, rather than inferred event descriptions.
 - High-frequency input is retained only in per-type five-entry ring buffers;
-  UI redraws are coalesced per main-run-loop turn. Notifications' available
-  `userInfo` and event-specific NSEvent fields are snapshotted at receipt.
+  UI redraws are coalesced per main-run-loop turn. Notification `userInfo`
+  and event-specific NSEvent properties are snapshotted on receipt.
 
 ## Inspection model
 

@@ -59,19 +59,35 @@ final class MainWindowController: NSWindowController {
         let editorHost = NSView()
         editorHost.translatesAutoresizingMaskIntoConstraints = false
         let eventPanel = eventTracker.view
+        let divider = EventTrackerResizeHandle()
+        let eventHeight = eventPanel.heightAnchor.constraint(equalToConstant: 235)
         editorHost.addSubview(editor.scrollView)
+        editorHost.addSubview(divider)
         editorHost.addSubview(eventPanel)
         editor.scrollView.translatesAutoresizingMaskIntoConstraints = false
+        divider.translatesAutoresizingMaskIntoConstraints = false
         eventPanel.translatesAutoresizingMaskIntoConstraints = false
+        // A draggable horizontal divider lets the event area grow or shrink,
+        // without changing the permanent 50/50 inspector/editor columns.
+        divider.onResize = { [weak editorHost] desiredHeight in
+            guard let editorHost else { return }
+            let maximum = max(110, editorHost.bounds.height - 160)
+            eventHeight.constant = min(max(110, desiredHeight), maximum)
+        }
+        divider.currentHeight = { eventHeight.constant }
         NSLayoutConstraint.activate([
             editor.scrollView.topAnchor.constraint(equalTo: editorHost.topAnchor),
             editor.scrollView.leadingAnchor.constraint(equalTo: editorHost.leadingAnchor),
             editor.scrollView.trailingAnchor.constraint(equalTo: editorHost.trailingAnchor),
-            editor.scrollView.bottomAnchor.constraint(equalTo: eventPanel.topAnchor),
+            editor.scrollView.bottomAnchor.constraint(equalTo: divider.topAnchor),
+            divider.leadingAnchor.constraint(equalTo: editorHost.leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: editorHost.trailingAnchor),
+            divider.bottomAnchor.constraint(equalTo: eventPanel.topAnchor),
+            divider.heightAnchor.constraint(equalToConstant: 9),
             eventPanel.leadingAnchor.constraint(equalTo: editorHost.leadingAnchor),
             eventPanel.trailingAnchor.constraint(equalTo: editorHost.trailingAnchor),
             eventPanel.bottomAnchor.constraint(equalTo: editorHost.bottomAnchor),
-            eventPanel.heightAnchor.constraint(equalToConstant: 235)
+            eventHeight
         ])
 
         let properties = inspector.view
@@ -128,5 +144,36 @@ final class MainWindowController: NSWindowController {
     @objc private func showListPanel(_ sender: Any?) {
         window?.makeFirstResponder(editor.textView)
         editor.textView.orderFrontListPanel(nil)
+    }
+}
+
+
+/// A thin, mouse-draggable split handle above the event list.
+private final class EventTrackerResizeHandle: NSView {
+    var currentHeight: (() -> CGFloat)?
+    var onResize: ((CGFloat) -> Void)?
+    private var dragStartY: CGFloat = 0
+    private var heightAtDragStart: CGFloat = 0
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .resizeUpDown)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        NSColor.separatorColor.setFill()
+        NSRect(x: 0, y: bounds.midY, width: bounds.width, height: 1).fill()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStartY = event.locationInWindow.y
+        heightAtDragStart = currentHeight?() ?? 235
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        // The window's Y coordinates increase upwards. Dragging the handle
+        // upwards increases the height of the bottom event panel.
+        onResize?(heightAtDragStart + event.locationInWindow.y - dragStartY)
     }
 }

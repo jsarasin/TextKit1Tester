@@ -12,15 +12,18 @@ final class EditorController: NSObject, NSTextViewDelegate, NSLayoutManagerDeleg
     var onEvent: ((String, String, [EventDetail]) -> Void)?
 
     private func report(_ name: String, _ summary: String, _ fields: [EventDetail]) {
-        onEvent?(name, summary, fields)
+        onEvent?(name, summary, [
+            EventDetail("callback.receiver", String(reflecting: type(of: self))),
+            EventDetail("API.methodOrNotification", name)
+        ] + fields)
     }
 
     private func editingDetails(_ notification: Notification) -> [EventDetail] {
         EventPayload.notification(notification) + [
-            EventDetail("editedMask", String(describing: textStorage.editedMask)),
-            EventPayload.range("editedRange", textStorage.editedRange),
-            EventDetail("changeInLength", String(textStorage.changeInLength)),
-            EventDetail("storageLength", String(textStorage.length))
+            EventDetail("NSTextStorage.editedMask", String(describing: textStorage.editedMask)),
+            EventPayload.range("NSTextStorage.editedRange", textStorage.editedRange),
+            EventDetail("NSTextStorage.changeInLength", String(textStorage.changeInLength)),
+            EventDetail("NSTextStorage.length", String(textStorage.length))
         ]
     }
     private(set) var inspectionRange = NSRange(location: 0, length: 0)
@@ -62,13 +65,15 @@ final class EditorController: NSObject, NSTextViewDelegate, NSLayoutManagerDeleg
             guard let self else { return }
             self.changed()
             let range = self.textView.selectedRange()
-            self.report("setSelectedRange / input selection", NSStringFromRange(range), [
-                EventPayload.range("selection", range),
-                EventDetail("storageLength", String(self.textStorage.length))
+            self.onEvent?("InspectorTextView.selectionDidMove", NSStringFromRange(range), [
+                EventDetail("callback.source", String(reflecting: type(of: self.textView))),
+                EventDetail("callback.property", "InspectorTextView.selectionDidMove"),
+                EventPayload.range("NSTextView.selectedRange()", range),
+                EventDetail("NSTextStorage.length", String(self.textStorage.length))
             ])
         }
         text.onInputEvent = { [weak self] name, summary, details in
-            self?.report(name, summary, details)
+            self?.onEvent?(name, summary, details)
         }
         layout.delegate = self
 
@@ -93,19 +98,19 @@ final class EditorController: NSObject, NSTextViewDelegate, NSLayoutManagerDeleg
 
     @objc private func contentMoved(_ notification: Notification) {
         let bounds = scrollView.contentView.bounds
-        report("Scroll bounds changed", "origin=\(NSStringFromPoint(bounds.origin))", EventPayload.notification(notification) + [
-            EventDetail("visibleBounds", NSStringFromRect(bounds))
+        report("NSView.boundsDidChangeNotification", "origin=\(NSStringFromPoint(bounds.origin))", EventPayload.notification(notification) + [
+            EventDetail("NSClipView.bounds", NSStringFromRect(bounds))
         ])
         onContextChanged?()
     }
 
     @objc private func storageWillEdit(_ notification: Notification) {
-        report("NSTextStorage willProcessEditing", NSStringFromRange(textStorage.editedRange),
+        report("NSTextStorage.willProcessEditingNotification", NSStringFromRange(textStorage.editedRange),
                editingDetails(notification))
     }
 
     @objc private func storageEdited(_ notification: Notification) {
-        report("NSTextStorage didProcessEditing", NSStringFromRange(textStorage.editedRange),
+        report("NSTextStorage.didProcessEditingNotification", NSStringFromRange(textStorage.editedRange),
                editingDetails(notification))
         onContextChanged?()
     }
@@ -114,8 +119,8 @@ final class EditorController: NSObject, NSTextViewDelegate, NSLayoutManagerDeleg
         let attrs = textView.typingAttributes.map {
             EventDetail($0.key.rawValue, String(reflecting: $0.value))
         }.sorted { $0.name < $1.name }
-        report("Typing attributes changed", "\(attrs.count) attributes",
-               EventPayload.notification(notification) + [EventDetail("typingAttributes", "\(attrs.count) fields", children: attrs)])
+        report("NSTextView.didChangeTypingAttributesNotification", "\(attrs.count) attributes",
+               EventPayload.notification(notification) + [EventDetail("NSTextView.typingAttributes", "\(attrs.count) fields", children: attrs)])
         onContextChanged?()
     }
 
@@ -126,62 +131,63 @@ final class EditorController: NSObject, NSTextViewDelegate, NSLayoutManagerDeleg
 
     func textViewDidChangeSelection(_ notification: Notification) {
         changed()
-        report("textViewDidChangeSelection", NSStringFromRange(inspectionRange),
+        report("NSTextViewDelegate.textViewDidChangeSelection(_:)", NSStringFromRange(inspectionRange),
                EventPayload.notification(notification) + [
-                   EventPayload.range("selectedRange", inspectionRange),
-                   EventDetail("selectedRanges", String(describing: textView.selectedRanges))
+                   EventPayload.range("NSTextView.selectedRange()", inspectionRange),
+                   EventDetail("NSTextView.selectedRanges", String(describing: textView.selectedRanges))
                ])
     }
 
     func textDidChange(_ notification: Notification) {
         changed()
-        report("textDidChange", "length=\(textStorage.length)",
+        report("NSTextDelegate.textDidChange(_:)", "length=\(textStorage.length)",
                EventPayload.notification(notification) + [
-                   EventDetail("storageLength", String(textStorage.length)),
-                   EventPayload.range("selectedRange", textView.selectedRange())
+                   EventDetail("NSTextStorage.length", String(textStorage.length)),
+                   EventPayload.range("NSTextView.selectedRange()", textView.selectedRange())
                ])
     }
 
     func textDidBeginEditing(_ notification: Notification) {
-        report("textDidBeginEditing", "editing began", EventPayload.notification(notification))
+        report("NSTextDelegate.textDidBeginEditing(_:)", "editing began", EventPayload.notification(notification))
     }
 
     func textDidEndEditing(_ notification: Notification) {
-        report("textDidEndEditing", "editing ended", EventPayload.notification(notification))
+        report("NSTextDelegate.textDidEndEditing(_:)", "editing ended", EventPayload.notification(notification))
     }
 
     func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        report("textView doCommandBy", NSStringFromSelector(commandSelector), [
-            EventDetail("selector", NSStringFromSelector(commandSelector)),
-            EventPayload.range("selectedRange", textView.selectedRange())
+        report("NSTextViewDelegate.textView(_:doCommandBy:)", NSStringFromSelector(commandSelector), [
+            EventDetail("commandSelector", NSStringFromSelector(commandSelector)),
+            EventPayload.range("NSTextView.selectedRange()", textView.selectedRange())
         ])
         return false
     }
 
     func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
                   replacementString: String?) -> Bool {
-        report("textView shouldChangeTextIn", NSStringFromRange(affectedCharRange), [
+        report("NSTextViewDelegate.textView(_:shouldChangeTextIn:replacementString:)", NSStringFromRange(affectedCharRange), [
             EventPayload.range("affectedCharRange", affectedCharRange),
-            EventDetail("replacementString", String(reflecting: replacementString)),
-            EventDetail("replacementUTF16Length", String(replacementString?.utf16.count ?? 0))
+            EventDetail("replacementString", String(reflecting: replacementString))
         ])
         return true
     }
 
     func layoutManagerDidInvalidateLayout(_ sender: NSLayoutManager) {
-        report("layoutManagerDidInvalidateLayout", "layout invalidated", [
-            EventDetail("textContainers", String(sender.textContainers.count)),
-            EventDetail("storageLength", String(sender.textStorage?.length ?? 0))
+        report("NSLayoutManagerDelegate.layoutManagerDidInvalidateLayout(_:)", "layout invalidated", [
+            EventDetail("sender.object", String(reflecting: type(of: sender))),
+            EventDetail("NSLayoutManager.textContainers.count", String(sender.textContainers.count)),
+            EventDetail("NSTextStorage.length", String(sender.textStorage?.length ?? 0))
         ])
     }
 
     func layoutManager(_ layoutManager: NSLayoutManager,
                        didCompleteLayoutFor textContainer: NSTextContainer?,
                        atEnd layoutFinishedFlag: Bool) {
-        report("layoutManager didCompleteLayoutFor", "atEnd=\(layoutFinishedFlag)", [
-            EventDetail("textContainer", textContainer.map { String(reflecting: $0) } ?? "nil"),
+        report("NSLayoutManagerDelegate.layoutManager(_:didCompleteLayoutFor:atEnd:)", "atEnd=\(layoutFinishedFlag)", [
+            EventDetail("layoutManager.object", String(reflecting: type(of: layoutManager))),
+            EventDetail("textContainer (NSTextContainer?)", textContainer.map { String(reflecting: type(of: $0)) } ?? "nil"),
             EventDetail("atEnd", String(layoutFinishedFlag)),
-            EventDetail("containerSize", textContainer.map { NSStringFromSize($0.size) } ?? "nil")
+            EventDetail("NSTextContainer.size", textContainer.map { NSStringFromSize($0.size) } ?? "nil")
         ])
     }
 

@@ -9,15 +9,20 @@ final class InspectorTextView: NSTextView {
         let summary: String
         switch event.type {
         case .keyDown, .keyUp:
-            summary = "keyCode \(event.keyCode)  \(String(reflecting: event.characters))"
+            summary = "NSEvent.keyCode=\(event.keyCode)  NSEvent.characters=\(String(reflecting: event.characters))"
         case .scrollWheel:
-            summary = "delta=(\(event.scrollingDeltaX), \(event.scrollingDeltaY))"
+            summary = "NSEvent.scrollingDeltaX=\(event.scrollingDeltaX)  NSEvent.scrollingDeltaY=\(event.scrollingDeltaY)"
         case .flagsChanged:
-            summary = "modifiers=\(event.modifierFlags.rawValue) keyCode=\(event.keyCode)"
+            summary = "NSEvent.modifierFlags.rawValue=\(event.modifierFlags.rawValue)  NSEvent.keyCode=\(event.keyCode)"
         default:
-            summary = "position=\(NSStringFromPoint(event.locationInWindow))"
+            summary = "NSEvent.locationInWindow=\(NSStringFromPoint(event.locationInWindow))"
         }
-        onInputEvent?(name, summary, EventPayload.input(event))
+        let apiName = "InspectorTextView.\(name)(with:)"
+        onInputEvent?(apiName, summary, [
+            EventDetail("receiver.object", String(reflecting: type(of: self))),
+            EventDetail("receiver.method", apiName),
+            EventDetail("parameter.event", "NSEvent", children: EventPayload.input(event))
+        ])
     }
 
     override func keyDown(with event: NSEvent) {
