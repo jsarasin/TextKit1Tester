@@ -9,13 +9,13 @@ final class InspectorTextView: NSTextView {
         let summary: String
         switch event.type {
         case .keyDown, .keyUp:
-            summary = "keyCode \(event.keyCode)  \(String(reflecting: event.characters))"
+            summary = "NSEvent.keyCode=\(event.keyCode)  NSEvent.characters=\(String(reflecting: event.characters))"
         case .scrollWheel:
-            summary = "delta=(\(event.scrollingDeltaX), \(event.scrollingDeltaY))"
+            summary = "NSEvent.scrollingDeltaX=\(event.scrollingDeltaX)  NSEvent.scrollingDeltaY=\(event.scrollingDeltaY)"
         case .flagsChanged:
-            summary = "modifiers=\(event.modifierFlags.rawValue) keyCode=\(event.keyCode)"
+            summary = "NSEvent.modifierFlags.rawValue=\(event.modifierFlags.rawValue)  NSEvent.keyCode=\(event.keyCode)"
         default:
-            summary = "position=\(NSStringFromPoint(event.locationInWindow))"
+            summary = "NSEvent.locationInWindow=\(NSStringFromPoint(event.locationInWindow))"
         }
         let apiName = "InspectorTextView.\(name)(with:)"
         onInputEvent?(apiName, summary, [
