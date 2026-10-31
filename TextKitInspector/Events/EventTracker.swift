@@ -282,7 +282,7 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         if let occurrence = item as? EventOccurrence { return !occurrence.details.isEmpty }
-        return !(item as? EventDetail)?.children.isEmpty
+        return !((item as? EventDetail)?.children.isEmpty ?? true)
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -441,7 +441,7 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         if let type = item as? EventTypeRecord { return !(type.latest?.details.isEmpty ?? true) }
-        return !(item as? EventDetail)?.children.isEmpty
+        return !((item as? EventDetail)?.children.isEmpty ?? true)
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
