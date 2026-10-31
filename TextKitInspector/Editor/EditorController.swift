@@ -181,7 +181,7 @@ final class EditorController: NSObject, NSTextViewDelegate, NSLayoutManagerDeleg
         report("layoutManager didCompleteLayoutFor", "atEnd=\(layoutFinishedFlag)", [
             EventDetail("textContainer", textContainer.map { String(reflecting: $0) } ?? "nil"),
             EventDetail("atEnd", String(layoutFinishedFlag)),
-            EventDetail("usedRect", textContainer.map { NSStringFromRect(layoutManager.usedRect(for: $0)) } ?? "nil")
+            EventDetail("containerSize", textContainer.map { NSStringFromSize($0.size) } ?? "nil")
         ])
     }
 
