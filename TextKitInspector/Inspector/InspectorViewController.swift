@@ -99,10 +99,10 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         // visible-row reuse rather than rebuilding hundreds of stack views.
         nameColumn.title = "Property"
         nameColumn.width = 195
-        nameColumn.minWidth = 140
+        nameColumn.minWidth = 0
         valueColumn.title = "Value"
         valueColumn.width = 330
-        valueColumn.minWidth = 160
+        valueColumn.minWidth = 0
         outline.addTableColumn(nameColumn)
         outline.addTableColumn(valueColumn)
         outline.outlineTableColumn = nameColumn
@@ -264,17 +264,20 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
 
         switch node.entry {
         case let .group(group):
-            return textCell(isName ? group.title : group.object,
-                            font: isName ? .systemFont(ofSize: 13, weight: .semibold)
-                                         : .monospacedSystemFont(ofSize: 11, weight: .regular),
-                            alignment: .left,
-                            color: isName ? .labelColor : .secondaryLabelColor)
+            if isName { return classHeaderCell(group) }
+            return textCell(group.object,
+                            font: .monospacedSystemFont(ofSize: 11, weight: .regular),
+                            alignment: .left, color: .secondaryLabelColor)
         case let .property(property):
             if isName {
+                let tooltip = property.explanation.isEmpty ? property.name :
+                    "\(property.name)\n\(property.explanation)"
+                if property.name.contains(" → ") {
+                    return relationshipCell(property.name, tooltip: tooltip)
+                }
                 return textCell(property.name, font: .systemFont(ofSize: 13),
                                 alignment: .right, color: .secondaryLabelColor,
-                                tooltip: property.explanation.isEmpty ? property.name :
-                                    "\(property.name)\n\(property.explanation)")
+                                tooltip: tooltip)
             }
             return valueCell(property)
         case let .cellGrid(row, column, rows, columns):
@@ -284,6 +287,112 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
             }
             return gridCell(row: row, column: column, rows: rows, columns: columns)
         }
+    }
+
+    // Each class has a stable colour in the inspector. The coloured rail keeps
+    // label text at system contrast levels in both light and dark appearances.
+    private func classAccent(for key: String) -> NSColor {
+        switch key {
+        case "scroll": return .systemPurple
+        case "view", "typing": return .systemBlue
+        case "container": return .systemTeal
+        case "layout", "cellGeometry": return .systemOrange
+        case "storage", "character", "attributes", "mixed": return .systemGreen
+        case "font": return .systemIndigo
+        case "paragraph": return .systemBrown
+        case "tableCell": return .systemRed
+        case "table": return .systemPink
+        case "attachment": return .systemYellow
+        case "image": return .systemCyan
+        case "foreground", "background": return .systemMint
+        case "link": return .systemBlue
+        default:
+            if key.hasPrefix("list-") { return .systemBrown }
+            if key.hasPrefix("imageRep-") { return .systemCyan }
+            if key.hasPrefix("run-") { return .systemGreen }
+            return .systemGray
+        }
+    }
+
+    private func classAccent(named name: String) -> NSColor? {
+        switch name {
+        case "NSScrollView", "NSClipView": return .systemPurple
+        case "NSTextView": return .systemBlue
+        case "NSTextContainer": return .systemTeal
+        case "NSLayoutManager": return .systemOrange
+        case "NSTextStorage", "NSMutableAttributedString", "NSAttributedString": return .systemGreen
+        case "NSFont": return .systemIndigo
+        case "NSParagraphStyle", "NSTextList": return .systemBrown
+        case "NSTextTableBlock": return .systemRed
+        case "NSTextTable": return .systemPink
+        case "NSTextAttachment": return .systemYellow
+        case "NSImage": return .systemCyan
+        case "NSColor": return .systemMint
+        default: return nil
+        }
+    }
+
+    private func classHeaderCell(_ group: InspectionGroup) -> NSView {
+        let cell = NSTableCellView()
+        let bar = NSBox()
+        bar.boxType = .custom
+        bar.borderType = .noBorder
+        bar.cornerRadius = 3
+        bar.fillColor = classAccent(for: group.key)
+        bar.translatesAutoresizingMaskIntoConstraints = false
+
+        let title = NSTextField(labelWithString: group.title)
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        title.textColor = .labelColor
+        title.lineBreakMode = .byTruncatingMiddle
+        title.toolTip = group.title
+        title.translatesAutoresizingMaskIntoConstraints = false
+
+        cell.addSubview(bar)
+        cell.addSubview(title)
+        cell.textField = title
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            bar.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            bar.widthAnchor.constraint(equalToConstant: 5),
+            bar.heightAnchor.constraint(equalToConstant: 17),
+            title.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: 6),
+            title.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+            title.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        ])
+        return cell
+    }
+
+    /// Colour the names in object-reference chains using the same palette
+    /// as the class headers. No syntax-colouring is applied to actual values.
+    private func relationshipCell(_ label: String, tooltip: String) -> NSView {
+        let cell = textCell(label, font: .systemFont(ofSize: 13),
+                            alignment: .right, color: .secondaryLabelColor,
+                            tooltip: tooltip)
+        guard let textField = (cell as? NSTableCellView)?.textField else { return cell }
+        let styled = NSMutableAttributedString(string: label, attributes: [
+            .font: NSFont.systemFont(ofSize: 13),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ])
+        let nsLabel = label as NSString
+        var searchStart = 0
+        for part in label.components(separatedBy: " → ") {
+            let name = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let color = classAccent(named: name), searchStart < nsLabel.length {
+                let remaining = NSRange(location: searchStart, length: nsLabel.length - searchStart)
+                let match = nsLabel.range(of: name, options: [], range: remaining)
+                if match.location != NSNotFound {
+                    styled.addAttributes([
+                        .foregroundColor: color,
+                        .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
+                    ], range: match)
+                    searchStart = NSMaxRange(match)
+                }
+            }
+        }
+        textField.attributedStringValue = styled
+        textField.alignment = .right
+        return cell
     }
 
     private func textCell(_ value: String, font: NSFont, alignment: NSTextAlignment,
