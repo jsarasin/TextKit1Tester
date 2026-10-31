@@ -11,8 +11,7 @@ final class MainWindowController: NSWindowController {
                               backing: .buffered, defer: false)
         window.title = "TextKit Inspector — Native TextKit 1 Laboratory"
         window.center()
-        window.minSize = NSSize(width: 1000, height: 580)
-        self.init(window: window)
+                self.init(window: window)
         buildUI()
         editor.onContextChanged = { [weak self] in self?.refreshInspector() }
         inspector.onEdit = { [weak self] action, value in self?.editor.apply(action: action, text: value) }
@@ -63,8 +62,14 @@ final class MainWindowController: NSWindowController {
         // Drag the divider to make it wider; editing content stays on the right.
         split.addArrangedSubview(inspector.view)
         split.addArrangedSubview(editorHost)
-        inspector.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 380).isActive = true
-        editorHost.widthAnchor.constraint(greaterThanOrEqualToConstant: 460).isActive = true
+        // No minimum or maximum pane widths. Both sides can be resized freely,
+        // including a 50/50 split (or almost the entire window for either pane).
+        // Lower the content compression/hugging priorities so nested controls
+        // cannot force NSSplitView to snap its divider back.
+        for pane in [inspector.view, editorHost] {
+            pane.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            pane.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
 
         status.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         status.textColor = .secondaryLabelColor
@@ -82,10 +87,11 @@ final class MainWindowController: NSWindowController {
             status.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -7),
             status.heightAnchor.constraint(equalToConstant: 17)
         ])
-        // Start with a comfortable inspector width. The split divider remains freely draggable.
-        // Position after Auto Layout installs the split-view geometry.
+        // Set the initial position once, after layout, to half the available width.
+        // This does not run on subsequent resizes or selection changes.
         DispatchQueue.main.async { [weak split] in
-            split?.setPosition(535, ofDividerAt: 0)
+            guard let split, split.bounds.width > 0 else { return }
+            split.setPosition(split.bounds.midX, ofDividerAt: 0)
         }
     }
 
