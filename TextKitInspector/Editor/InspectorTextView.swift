@@ -23,6 +23,11 @@ final class InspectorTextView: NSTextView {
         super.keyDown(with: event)
     }
 
+    override func flagsChanged(with event: NSEvent) {
+        report("flagsChanged", event)
+        super.flagsChanged(with: event)
+    }
+
     override func mouseDown(with event: NSEvent) {
         report("mouseDown", event)
         super.mouseDown(with: event)
@@ -36,6 +41,31 @@ final class InspectorTextView: NSTextView {
     override func rightMouseDown(with event: NSEvent) {
         report("rightMouseDown", event)
         super.rightMouseDown(with: event)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        report("rightMouseUp", event)
+        super.rightMouseUp(with: event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        report("rightMouseDragged", event)
+        super.rightMouseDragged(with: event)
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        report("otherMouseDown", event)
+        super.otherMouseDown(with: event)
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        report("otherMouseUp", event)
+        super.otherMouseUp(with: event)
+    }
+
+    override func otherMouseDragged(with event: NSEvent) {
+        report("otherMouseDragged", event)
+        super.otherMouseDragged(with: event)
     }
 
     override func scrollWheel(with event: NSEvent) {
