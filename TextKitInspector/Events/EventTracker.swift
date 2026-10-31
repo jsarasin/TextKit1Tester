@@ -116,6 +116,8 @@ enum EventPayload {
             EventDetail("modifierFlags.rawValue", String(event.modifierFlags.rawValue))
         ]
         switch event.type {
+        case .flagsChanged:
+            fields.append(EventDetail("keyCode", String(event.keyCode)))
         case .keyDown, .keyUp:
             fields += [
                 EventDetail("characters", String(reflecting: event.characters)),
