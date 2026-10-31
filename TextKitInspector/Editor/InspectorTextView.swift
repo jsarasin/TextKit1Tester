@@ -12,6 +12,8 @@ final class InspectorTextView: NSTextView {
             summary = "keyCode \(event.keyCode)  \(String(reflecting: event.characters))"
         case .scrollWheel:
             summary = "delta=(\(event.scrollingDeltaX), \(event.scrollingDeltaY))"
+        case .flagsChanged:
+            summary = "modifiers=\(event.modifierFlags.rawValue) keyCode=\(event.keyCode)"
         default:
             summary = "position=\(NSStringFromPoint(event.locationInWindow))"
         }
