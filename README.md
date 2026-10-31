@@ -61,8 +61,8 @@ Clicking the button opens the matching Apple Developer documentation page in
 the default web browser; merely expanding/inspecting a row does not open a link.
 
 For overridden mouse/keyboard/scroll methods, the link points to the original
-\`NSResponder\` API rather than an invented page for \`InspectorTextView\`.
-Known event properties link to their individual \`NSEvent\` documentation pages,
+`NSResponder` API rather than an invented page for `InspectorTextView`.
+Known event properties link to their individual `NSEvent` documentation pages,
 and named callback parameters link to their declaring delegate method's page.
 Custom inspector callbacks, derived properties, and arbitrary notification
 dictionary keys intentionally have no button, rather than linking to unrelated
