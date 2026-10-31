@@ -38,6 +38,56 @@ private final class InspectorEditField: NSTextField {
     }
 }
 
+/// AppKit may temporarily assign zero width to NSOutlineView cell views while
+/// measuring columns. Size child controls from their actual row frame instead
+/// of constraining both edges with positive insets (which is unsatisfiable at 0).
+private final class FlexibleInspectorCell: NSTableCellView {
+    var trailingBadge: NSTextField?
+    var accentBar: NSBox?
+    var embeddedContent: NSView?
+
+    override func layout() {
+        super.layout()
+        let width = max(0, bounds.width)
+        let height = max(0, bounds.height)
+        let startX: CGFloat = accentBar == nil ? 6 : 15
+
+        if let accentBar {
+            accentBar.frame = NSRect(
+                x: 4, y: max(0, (height - 17) / 2),
+                width: 5, height: min(17, height)
+            )
+        }
+
+        if let embeddedContent {
+            let fitting = embeddedContent.fittingSize
+            embeddedContent.frame = NSRect(
+                x: 6, y: max(0, (height - fitting.height) / 2),
+                width: fitting.width, height: fitting.height
+            )
+        }
+
+        if let trailingBadge {
+            let badgeWidth = min(width, max(0, ceil(trailingBadge.intrinsicContentSize.width) + 2))
+            trailingBadge.frame = NSRect(
+                x: max(0, width - badgeWidth - 8), y: 0,
+                width: badgeWidth, height: height
+            )
+            textField?.frame = NSRect(
+                x: startX, y: 0,
+                width: max(0, trailingBadge.frame.minX - startX - 7),
+                height: height
+            )
+        } else if embeddedContent == nil {
+            textField?.frame = NSRect(
+                x: startX, y: 0,
+                width: max(0, width - startX - 6),
+                height: height
+            )
+        }
+    }
+}
+
 final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
                                      NSOutlineViewDataSource, NSOutlineViewDelegate {
     var onEdit: ((PropertyAction, String) -> Void)?
@@ -333,33 +383,23 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
     }
 
     private func classHeaderCell(_ group: InspectionGroup) -> NSView {
-        let cell = NSTableCellView()
+        let cell = FlexibleInspectorCell()
         let bar = NSBox()
         bar.boxType = .custom
         bar.borderType = .noBorder
         bar.cornerRadius = 3
         bar.fillColor = classAccent(for: group.key)
-        bar.translatesAutoresizingMaskIntoConstraints = false
 
         let title = NSTextField(labelWithString: group.title)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.textColor = .labelColor
         title.lineBreakMode = .byTruncatingMiddle
         title.toolTip = group.title
-        title.translatesAutoresizingMaskIntoConstraints = false
 
         cell.addSubview(bar)
         cell.addSubview(title)
+        cell.accentBar = bar
         cell.textField = title
-        NSLayoutConstraint.activate([
-            bar.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            bar.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            bar.widthAnchor.constraint(equalToConstant: 5),
-            bar.heightAnchor.constraint(equalToConstant: 17),
-            title.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: 6),
-            title.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-            title.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-        ])
         return cell
     }
 
@@ -397,26 +437,20 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
 
     private func textCell(_ value: String, font: NSFont, alignment: NSTextAlignment,
                           color: NSColor, tooltip: String? = nil) -> NSView {
-        let container = NSTableCellView()
+        let cell = FlexibleInspectorCell()
         let label = NSTextField(labelWithString: value)
         label.font = font
         label.alignment = alignment
         label.textColor = color
         label.lineBreakMode = .byTruncatingMiddle
         label.toolTip = tooltip ?? value
-        label.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(label)
-        container.textField = label
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
-            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
-            label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-        ])
-        return container
+        cell.addSubview(label)
+        cell.textField = label
+        return cell
     }
 
     private func valueCell(_ property: InspectedProperty) -> NSView {
-        let container = NSTableCellView()
+        let cell = FlexibleInspectorCell()
         let value: NSTextField
         if let action = property.action {
             let editable = InspectorEditField(value: property.value) { [weak self] input in
@@ -429,35 +463,27 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
             label.font = .systemFont(ofSize: 13)
             label.alignment = .left
             label.lineBreakMode = .byTruncatingMiddle
-            label.toolTip = property.value + (property.explanation.isEmpty ? "" : "\n" + property.explanation)
+            label.toolTip = property.value +
+                (property.explanation.isEmpty ? "" : "\n" + property.explanation)
             value = label
         }
+
         let origin = NSTextField(labelWithString: property.origin.rawValue)
         origin.font = .systemFont(ofSize: 10)
         origin.alignment = .right
         origin.textColor = .tertiaryLabelColor
-        origin.setContentHuggingPriority(.required, for: .horizontal)
-        origin.setContentCompressionResistancePriority(.required, for: .horizontal)
-        value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        value.translatesAutoresizingMaskIntoConstraints = false
-        origin.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(value)
-        container.addSubview(origin)
-        container.textField = value
-        NSLayoutConstraint.activate([
-            value.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
-            value.trailingAnchor.constraint(equalTo: origin.leadingAnchor, constant: -7),
-            value.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            origin.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
-            origin.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-        ])
-        return container
+
+        cell.addSubview(value)
+        cell.addSubview(origin)
+        cell.textField = value
+        cell.trailingBadge = origin
+        return cell
     }
 
     /// The small cell map is a specialized value view inside the same grid.
     /// Cap its dimensions; the actual source table can have more rows/columns.
     private func gridCell(row: Int, column: Int, rows: Int, columns: Int) -> NSView {
-        let container = NSTableCellView()
+        let cell = FlexibleInspectorCell()
         let displayRows = min(max(rows, 1), 6)
         let displayColumns = min(max(columns, 1), 6)
         let grid = NSGridView(views: (0..<displayRows).map { r in
@@ -477,14 +503,11 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         })
         grid.rowSpacing = 2
         grid.columnSpacing = 2
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(grid)
-        NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
-            grid.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            grid.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -4)
-        ])
-        return container
+        cell.wantsLayer = true
+        cell.layer?.masksToBounds = true
+        cell.addSubview(grid)
+        cell.embeddedContent = grid
+        return cell
     }
 
     @objc private func copySelectedValue(_ sender: Any?) {
