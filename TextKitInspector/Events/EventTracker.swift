@@ -21,7 +21,7 @@ final class EventOccurrence: NSObject {
 
     init(summary: String, details: [EventDetail]) {
         self.summary = summary
-        self.details = details
+        self.details = [EventDetail("receivedAt", String(describing: date))] + details
     }
 }
 
@@ -219,6 +219,26 @@ private func detailCell(_ text: String, tooltip: String? = nil) -> NSTableCellVi
     return cell
 }
 
+/// History values wrap instead of truncating, so captured values remain readable
+/// and selectable, even when the payload is wider than the window.
+private func historyCell(_ text: String) -> NSTableCellView {
+    let cell = NSTableCellView()
+    let field = NSTextField(wrappingLabelWithString: text)
+    field.isSelectable = true
+    field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+    field.maximumNumberOfLines = 0
+    field.toolTip = text
+    field.translatesAutoresizingMaskIntoConstraints = false
+    cell.addSubview(field)
+    NSLayoutConstraint.activate([
+        field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+        field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
+        field.topAnchor.constraint(equalTo: cell.topAnchor, constant: 4),
+        field.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -4)
+    ])
+    return cell
+}
+
 /// A separate window for the last five snapshots of one event type.
 final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     private let record: EventTypeRecord
@@ -237,6 +257,7 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
         scroll.autohidesScrollers = true
         outline.headerView = nil
         outline.rowHeight = 25
+        outline.usesAutomaticRowHeights = true
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("History"))
         column.resizingMask = .autoresizingMask
         outline.addTableColumn(column)
@@ -288,10 +309,10 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         if let occurrence = item as? EventOccurrence {
             let date = DateFormatter.localizedString(from: occurrence.date, dateStyle: .none, timeStyle: .medium)
-            return detailCell("\(date)     \(occurrence.summary)")
+            return historyCell("\(date)     \(occurrence.summary)")
         }
         guard let detail = item as? EventDetail else { return nil }
-        return detailCell("\(detail.name): \(detail.value)")
+        return historyCell("\(detail.name): \(detail.value)")
     }
 }
 
