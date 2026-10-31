@@ -3,8 +3,6 @@ import AppKit
 final class MainWindowController: NSWindowController {
     private let editor = EditorController()
     private let inspector = InspectorViewController()
-    // Retain the native split-view controller for the window's lifetime.
-    private let splitController = NSSplitViewController()
     private let status = NSTextField(labelWithString: "")
 
     convenience init() {
@@ -13,7 +11,7 @@ final class MainWindowController: NSWindowController {
                               backing: .buffered, defer: false)
         window.title = "TextKit Inspector — Native TextKit 1 Laboratory"
         window.center()
-                self.init(window: window)
+        self.init(window: window)
         buildUI()
         editor.onContextChanged = { [weak self] in self?.refreshInspector() }
         inspector.onEdit = { [weak self] action, value in self?.editor.apply(action: action, text: value) }
@@ -46,16 +44,13 @@ final class MainWindowController: NSWindowController {
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(toolbar)
 
-        // Use AppKit's split-view controller to manage pane sizing.
-        // A generic NSSplitViewItem has no sidebar-specific width cap.
-        let split = splitController.splitView
-        split.isVertical = true
-        split.dividerStyle = .thin
-        splitController.view.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(splitController.view)
+        // Fixed 50/50 layout. No NSSplitView, no divider and no adjustable
+        // width preferences: both panes always occupy exactly half the window.
+        let panes = NSView()
+        panes.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(panes)
+
         let editorHost = NSView()
-        // NSSplitView owns the pane widths. Never synthesize autoresizing-mask
-        // constraints on this pane: they can force the divider back on drag.
         editorHost.translatesAutoresizingMaskIntoConstraints = false
         editorHost.addSubview(editor.scrollView)
         editor.scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -65,31 +60,26 @@ final class MainWindowController: NSWindowController {
             editor.scrollView.trailingAnchor.constraint(equalTo: editorHost.trailingAnchor),
             editor.scrollView.bottomAnchor.constraint(equalTo: editorHost.bottomAnchor)
         ])
-        // The exhaustive property inspector lives to the LEFT of the document.
-        // Drag the divider to make it wider; editing content stays on the right.
-        let editorPaneController = NSViewController()
-        editorPaneController.view = editorHost
 
-        let inspectorItem = NSSplitViewItem(viewController: inspector)
-        inspectorItem.minimumThickness = 0
-        inspectorItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
-        inspectorItem.canCollapse = false
-        inspectorItem.preferredThicknessFraction = 0.5
+        let properties = inspector.view
+        properties.translatesAutoresizingMaskIntoConstraints = false
+        panes.addSubview(properties)
+        panes.addSubview(editorHost)
 
-        let editorItem = NSSplitViewItem(viewController: editorPaneController)
-        editorItem.minimumThickness = 0
-        editorItem.maximumThickness = NSSplitViewItem.unspecifiedDimension
-        editorItem.canCollapse = false
+        // Required equal widths plus edge constraints enforce 50/50 at every
+        // window size. Never overwrite them in selection/resize callbacks.
+        NSLayoutConstraint.activate([
+            properties.leadingAnchor.constraint(equalTo: panes.leadingAnchor),
+            properties.topAnchor.constraint(equalTo: panes.topAnchor),
+            properties.bottomAnchor.constraint(equalTo: panes.bottomAnchor),
 
-        splitController.addSplitViewItem(inspectorItem)
-        splitController.addSplitViewItem(editorItem)
+            editorHost.leadingAnchor.constraint(equalTo: properties.trailingAnchor),
+            editorHost.trailingAnchor.constraint(equalTo: panes.trailingAnchor),
+            editorHost.topAnchor.constraint(equalTo: panes.topAnchor),
+            editorHost.bottomAnchor.constraint(equalTo: panes.bottomAnchor),
 
-        // Let the split controller determine both pane widths, rather than
-        // adopting the document text view's initial 780-point content size.
-        for pane in [inspector.view, editorHost, editor.scrollView] {
-            pane.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            pane.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        }
+            properties.widthAnchor.constraint(equalTo: editorHost.widthAnchor)
+        ])
 
         status.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         status.textColor = .secondaryLabelColor
@@ -98,10 +88,10 @@ final class MainWindowController: NSWindowController {
         NSLayoutConstraint.activate([
             toolbar.topAnchor.constraint(equalTo: content.topAnchor, constant: 10),
             toolbar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            splitController.view.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 10),
-            splitController.view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 6),
-            splitController.view.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -6),
-            status.topAnchor.constraint(equalTo: splitController.view.bottomAnchor, constant: 6),
+            panes.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: 10),
+            panes.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 6),
+            panes.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -6),
+            status.topAnchor.constraint(equalTo: panes.bottomAnchor, constant: 6),
             status.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 13),
             status.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -13),
             status.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -7),
