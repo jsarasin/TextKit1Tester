@@ -34,6 +34,7 @@ final class MainWindowController: NSWindowController {
         let toolbar = NSStackView(views: [
             button("Reset Document", selector: #selector(reset(_:))),
             button("Insert Image…", selector: #selector(insertImage(_:))),
+            button("Insert Horizontal Rule", selector: #selector(insertHorizontalRule(_:))),
             button("Insert 4×4 Table", selector: #selector(insertTable(_:))),
             button("Apple Table Panel", selector: #selector(showTablePanel(_:))),
             button("List Panel", selector: #selector(showListPanel(_:)))
@@ -109,6 +110,7 @@ final class MainWindowController: NSWindowController {
 
     @objc private func reset(_ sender: Any?) { editor.reset() }
     @objc private func insertImage(_ sender: Any?) { editor.insertImage() }
+    @objc private func insertHorizontalRule(_ sender: Any?) { editor.insertHorizontalRule() }
     @objc private func insertTable(_ sender: Any?) { editor.insertTable() }
     @objc private func showTablePanel(_ sender: Any?) { editor.showTablePanel() }
     @objc private func showListPanel(_ sender: Any?) {
