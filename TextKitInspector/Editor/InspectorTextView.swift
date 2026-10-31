@@ -17,7 +17,12 @@ final class InspectorTextView: NSTextView {
         default:
             summary = "position=\(NSStringFromPoint(event.locationInWindow))"
         }
-        onInputEvent?(name, summary, EventPayload.input(event))
+        let apiName = "InspectorTextView.\(name)(with:)"
+        onInputEvent?(apiName, summary, [
+            EventDetail("receiver.object", String(reflecting: type(of: self))),
+            EventDetail("receiver.method", apiName),
+            EventDetail("parameter.event", "NSEvent", children: EventPayload.input(event))
+        ])
     }
 
     override func keyDown(with event: NSEvent) {
