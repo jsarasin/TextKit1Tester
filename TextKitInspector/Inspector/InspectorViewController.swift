@@ -433,8 +433,8 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         }
     }
 
-    func outlineView(_ outlineView: NSOutlineView, rowViewForRow row: Int) -> NSTableRowView? {
-        guard let node = outlineView.item(atRow: row) as? InspectorNode else { return nil }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        guard let node = item as? InspectorNode else { return nil }
         if case .category = node.entry {
             return InspectorCategoryRowView()
         }
