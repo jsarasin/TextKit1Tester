@@ -172,6 +172,129 @@ enum EventPayload {
     }
 }
 
+/// Links only actual Apple system APIs; custom inspector-only callbacks
+/// and arbitrary notification payload keys intentionally have no link.
+private enum AppleDocumentation {
+    static let root = "https://developer.apple.com/documentation/"
+    static let known: [String: String] = [
+        "NSView.boundsDidChangeNotification": "appkit/nsview/boundsdidchangenotification",
+        "NSTextStorage.willProcessEditingNotification": "appkit/nstextstorage/willprocesseditingnotification",
+        "NSTextStorage.didProcessEditingNotification": "appkit/nstextstorage/didprocesseditingnotification",
+        "NSTextView.didChangeTypingAttributesNotification": "appkit/nstextview/didchangetypingattributesnotification",
+        "NSTextViewDelegate.textViewDidChangeSelection(_:)": "appkit/nstextviewdelegate/textviewdidchangeselection%28_%3A%29",
+        "NSTextViewDelegate.textView(_:doCommandBy:)": "appkit/nstextviewdelegate/textview%28_%3Adocommandby%3A%29",
+        "NSTextViewDelegate.textView(_:shouldChangeTextIn:replacementString:)": "appkit/nstextviewdelegate/textview%28_%3Ashouldchangetextin%3Areplacementstring%3A%29",
+        "NSTextDelegate.textDidChange(_:)": "appkit/nstextdelegate/textdidchange%28_%3A%29",
+        "NSTextDelegate.textDidBeginEditing(_:)": "appkit/nstextdelegate/textdidbeginediting%28_%3A%29",
+        "NSTextDelegate.textDidEndEditing(_:)": "appkit/nstextdelegate/textdidendediting%28_%3A%29",
+        "NSLayoutManagerDelegate.layoutManagerDidInvalidateLayout(_:)": "appkit/nslayoutmanagerdelegate/layoutmanagerdidinvalidatelayout%28_%3A%29",
+        "NSLayoutManagerDelegate.layoutManager(_:didCompleteLayoutFor:atEnd:)": "appkit/nslayoutmanagerdelegate/layoutmanager%28_%3Adidcompletelayoutfor%3Aatend%3A%29",
+        "Notification.name": "foundation/notification/name",
+        "Notification.object": "foundation/notification/object",
+        "Notification.userInfo": "foundation/notification/userinfo",
+        "NSRange.location": "foundation/nsrange/location",
+        "NSRange.length": "foundation/nsrange/length",
+        "NSTextStorage.editedMask": "appkit/nstextstorage/editedmask",
+        "NSTextStorage.editedRange": "appkit/nstextstorage/editedrange",
+        "NSTextStorage.changeInLength": "appkit/nstextstorage/changeinlength",
+        "NSTextStorage.length": "foundation/nsattributedstring/length",
+        "NSTextView.selectedRanges": "appkit/nstextview/selectedranges",
+        "NSTextView.selectedRange()": "appkit/nstextview/selectedrange",
+        "NSTextView.typingAttributes": "appkit/nstextview/typingattributes",
+        "NSClipView.bounds": "appkit/nsview/bounds",
+        "NSLayoutManager.textContainers.count": "appkit/nslayoutmanager/textcontainers",
+        "NSTextContainer.size": "appkit/nstextcontainer/size"
+    ]
+    private static let eventFields: Set<String> = [
+        "type", "windowNumber", "modifierFlags", "characters",
+        "charactersIgnoringModifiers", "keyCode", "isARepeat",
+        "eventNumber", "locationInWindow", "buttonNumber", "clickCount",
+        "pressure", "deltaX", "deltaY", "deltaZ", "scrollingDeltaX",
+        "scrollingDeltaY", "hasPreciseScrollingDeltas", "phase",
+        "momentumPhase", "isDirectionInvertedFromDevice"
+    ]
+    private static let responderMethods: Set<String> = [
+        "keyDown", "keyUp", "flagsChanged", "mouseDown", "mouseUp",
+        "mouseDragged", "rightMouseDown", "rightMouseUp",
+        "rightMouseDragged", "otherMouseDown", "otherMouseUp",
+        "otherMouseDragged", "scrollWheel"
+    ]
+
+    static func url(for symbol: String, eventType: String? = nil) -> URL? {
+        if let path = known[symbol] { return URL(string: root + path) }
+
+        if symbol.hasPrefix("InspectorTextView."), symbol.hasSuffix("(with:)") {
+            // This application's text view overrides NSResponder APIs.
+            let method = String(symbol.dropFirst("InspectorTextView.".count)
+                                      .dropLast("(with:)".count))
+            guard responderMethods.contains(method) else { return nil }
+            return URL(string: root + "appkit/nsresponder/\(method.lowercased())%28with%3A%29")
+        }
+
+        if symbol.hasPrefix("NSEvent.") {
+            let property = String(symbol.dropFirst("NSEvent.".count))
+            if property == "modifierFlags.rawValue" {
+                return URL(string: root + "appkit/nsevent/modifierflags")
+            }
+            guard eventFields.contains(property) else { return nil }
+            return URL(string: root + "appkit/nsevent/\(property.lowercased())")
+        }
+
+        if symbol == "event: NSEvent" || symbol == "parameter.event" {
+            return URL(string: root + "appkit/nsevent")
+        }
+        if symbol == "API.methodOrNotification", let eventType {
+            return url(for: eventType)
+        }
+        // These are parameters, not standalone properties: show their
+        // declaring method's parameter documentation instead.
+        if let eventType, let method = known[eventType],
+           ["affectedCharRange", "replacementString", "commandSelector",
+            "sender.object", "layoutManager.object",
+            "textContainer (NSTextContainer?)", "atEnd"].contains(symbol) {
+            return URL(string: root + method)
+        }
+        return nil
+    }
+}
+
+/// A lightweight button that opens the exact Apple API page in the user's
+/// default browser without activating the outline row's double-click action.
+private final class AppleDocumentationButton: NSButton {
+    private var documentationURL: URL?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        image = NSImage(systemSymbolName: "info.circle",
+                        accessibilityDescription: "Apple Developer Documentation")
+        imagePosition = .imageOnly
+        isBordered = false
+        focusRingType = .none
+        target = self
+        action = #selector(openDocumentation(_:))
+        setAccessibilityLabel("Open Apple Developer documentation")
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: 19),
+            heightAnchor.constraint(equalToConstant: 19)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    func configure(symbol: String, eventType: String? = nil) {
+        documentationURL = AppleDocumentation.url(for: symbol, eventType: eventType)
+        isHidden = documentationURL == nil
+        toolTip = documentationURL == nil ? nil : "Open Apple documentation for \(symbol)"
+    }
+
+    @objc private func openDocumentation(_ sender: Any?) {
+        guard let documentationURL else { return }
+        NSWorkspace.shared.open(documentationURL)
+    }
+}
+
 private final class EventTypeCell: NSTableCellView {
     let toggle = NSButton(title: "Pause", target: nil, action: nil)
     let eventName = NSTextField(labelWithString: "")
