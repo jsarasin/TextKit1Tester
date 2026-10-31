@@ -43,6 +43,116 @@ private final class InspectorEditField: NSTextField {
     }
 }
 
+/// Only inspectable properties that correspond to identifiable native APIs
+/// receive a documentation link. Derived measurements and arbitrary attributes
+/// intentionally do not masquerade as documented Apple properties.
+private enum InspectorAppleDocumentation {
+    private static let root = "https://developer.apple.com/documentation/"
+    private static let classForGroup: [String: String] = [
+        "scroll": "nsscrollview",
+        "view": "nstextview",
+        "container": "nstextcontainer",
+        "layout": "nslayoutmanager",
+        "storage": "nstextstorage",
+        "font": "nsfont",
+        "paragraph": "nsparagraphstyle",
+        "attachment": "nstextattachment",
+        "image": "nsimage",
+        "tableCell": "nstexttableblock",
+        "table": "nstexttable"
+    ]
+    private static let supported: [String: Set<String>] = [
+        "nsscrollview": [
+            "documentVisibleRect", "documentView", "hasVerticalScroller",
+            "hasHorizontalScroller", "autohidesScrollers"
+        ],
+        "nstextview": [
+            "isEditable", "isSelectable", "isRichText", "importsGraphics",
+            "allowsUndo", "isVerticallyResizable", "isHorizontallyResizable",
+            "textContainerInset", "minSize", "maxSize", "backgroundColor",
+            "isContinuousSpellCheckingEnabled", "usesFindBar", "usesFontPanel",
+            "selectedRange", "selectedRanges", "selectionAffinity",
+            "typingAttributes"
+        ],
+        "nstextcontainer": [
+            "size", "widthTracksTextView", "heightTracksTextView",
+            "lineFragmentPadding", "lineBreakMode", "exclusionPaths",
+            "layoutManager", "textView"
+        ],
+        "nslayoutmanager": [
+            "numberOfGlyphs", "textContainers", "allowsNonContiguousLayout",
+            "usesFontLeading"
+        ],
+        "nstextstorage": ["editedMask", "editedRange", "changeInLength", "length"],
+        "nsfont": ["fontName", "familyName", "pointSize", "ascender", "descender",
+                   "leading", "capHeight", "xHeight"],
+        "nsparagraphstyle": ["alignment", "lineSpacing", "paragraphSpacing",
+                             "firstLineHeadIndent", "headIndent", "tailIndent",
+                             "tabStops", "textLists", "textBlocks"],
+        "nstextattachment": ["bounds", "image", "fileWrapper", "contents", "fileType"],
+        "nsimage": ["size", "representations", "isValid"],
+        "nstexttableblock": ["table", "startingRow", "startingColumn", "rowSpan", "columnSpan"],
+        "nstexttable": ["numberOfColumns", "layoutAlgorithm"]
+    ]
+
+    static func url(for property: InspectedProperty, groupKey: String?) -> URL? {
+        guard property.origin == .live, let groupKey else { return nil }
+        let name = property.name
+
+        // Properties inherited from an NSView are documented on NSView.
+        if ["frame", "bounds"].contains(name),
+           ["scroll", "view"].contains(groupKey) {
+            return URL(string: root + "appkit/nsview/\(name.lowercased())")
+        }
+        if groupKey == "scroll", name == "contentView.bounds" {
+            return URL(string: root + "appkit/nsview/bounds")
+        }
+        if groupKey == "context",
+           ["selectedRange", "selectedRanges", "selectionAffinity"].contains(name) {
+            return URL(string: root + "appkit/nstextview/\(name.lowercased())")
+        }
+        if groupKey == "typing" {
+            return URL(string: root + "appkit/nstextview/typingattributes")
+        }
+        guard let className = classForGroup[groupKey] else { return nil }
+
+        // The .count is computed by this inspector, not an Apple property.
+        // Link to the real collection property that is being counted.
+        let member = name.hasSuffix(".count")
+            ? String(name.dropLast(".count".count))
+            : name
+        guard supported[className]?.contains(member) == true else { return nil }
+        if className == "nstextstorage", member == "length" {
+            return URL(string: root + "foundation/nsattributedstring/length")
+        }
+        return URL(string: root + "appkit/\(className)/\(member.lowercased())")
+    }
+}
+
+private final class InspectorDocumentationButton: NSButton {
+    private let documentationURL: URL
+
+    init(url: URL, symbol: String) {
+        documentationURL = url
+        super.init(frame: .zero)
+        image = NSImage(systemSymbolName: "info.circle",
+                        accessibilityDescription: "Apple Developer Documentation")
+        imagePosition = .imageOnly
+        isBordered = false
+        focusRingType = .none
+        toolTip = "Open Apple documentation for \(symbol)"
+        setAccessibilityLabel("Open Apple documentation for \(symbol)")
+        target = self
+        action = #selector(openDocumentation(_:))
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    @objc private func openDocumentation(_ sender: Any?) {
+        NSWorkspace.shared.open(documentationURL)
+    }
+}
+
 /// Paints the class accent rail without the deprecated NSBox border API.
 private final class InspectorAccentView: NSView {
     var accentColor: NSColor = .systemGray {
@@ -65,6 +175,7 @@ private final class InspectorAccentView: NSView {
 /// of constraining both edges with positive insets (which is unsatisfiable at 0).
 private final class FlexibleInspectorCell: NSTableCellView {
     var trailingBadge: NSTextField?
+    var documentationButton: NSButton?
     var accentBar: InspectorAccentView?
     var embeddedContent: NSView?
 
@@ -89,7 +200,17 @@ private final class FlexibleInspectorCell: NSTableCellView {
             )
         }
 
-        if let trailingBadge {
+        if let documentationButton {
+            documentationButton.frame = NSRect(
+                x: max(0, width - 23), y: max(0, (height - 19) / 2),
+                width: 19, height: 19
+            )
+            textField?.frame = NSRect(
+                x: startX, y: 0,
+                width: max(0, documentationButton.frame.minX - startX - 4),
+                height: height
+            )
+        } else if let trailingBadge {
             let badgeWidth = min(width, max(0, ceil(trailingBadge.intrinsicContentSize.width) + 2))
             trailingBadge.frame = NSRect(
                 x: max(0, width - badgeWidth - 8), y: 0,
