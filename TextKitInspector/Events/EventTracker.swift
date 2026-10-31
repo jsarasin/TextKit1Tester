@@ -106,12 +106,12 @@ enum EventPayload {
     }
 
     static func input(_ event: NSEvent) -> [EventDetail] {
+        // AppKit raises NSInternalInconsistencyException when certain NSEvent
+        // properties are read for the wrong event type.
         var fields = [
             EventDetail("type", String(describing: event.type)),
             EventDetail("timestamp", String(format: "%.6f", event.timestamp)),
-            EventDetail("eventNumber", String(event.eventNumber)),
             EventDetail("windowNumber", String(event.windowNumber)),
-            EventDetail("locationInWindow", NSStringFromPoint(event.locationInWindow)),
             EventDetail("modifierFlags", String(describing: event.modifierFlags)),
             EventDetail("modifierFlags.rawValue", String(event.modifierFlags.rawValue))
         ]
@@ -125,12 +125,21 @@ enum EventPayload {
                 EventDetail("keyCode", String(event.keyCode)),
                 EventDetail("isARepeat", String(event.isARepeat))
             ]
-        case .leftMouseDown, .leftMouseUp, .leftMouseDragged,
-             .rightMouseDown, .rightMouseUp, .rightMouseDragged,
-             .otherMouseDown, .otherMouseUp, .otherMouseDragged:
+        case .leftMouseDown, .leftMouseUp,
+             .rightMouseDown, .rightMouseUp,
+             .otherMouseDown, .otherMouseUp:
             fields += [
+                EventDetail("eventNumber", String(event.eventNumber)),
+                EventDetail("locationInWindow", NSStringFromPoint(event.locationInWindow)),
                 EventDetail("buttonNumber", String(event.buttonNumber)),
                 EventDetail("clickCount", String(event.clickCount)),
+                EventDetail("pressure", String(event.pressure))
+            ]
+        case .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
+            fields += [
+                EventDetail("eventNumber", String(event.eventNumber)),
+                EventDetail("locationInWindow", NSStringFromPoint(event.locationInWindow)),
+                EventDetail("buttonNumber", String(event.buttonNumber)),
                 EventDetail("pressure", String(event.pressure)),
                 EventDetail("deltaX", String(event.deltaX)),
                 EventDetail("deltaY", String(event.deltaY)),
@@ -138,6 +147,7 @@ enum EventPayload {
             ]
         case .scrollWheel:
             fields += [
+                EventDetail("locationInWindow", NSStringFromPoint(event.locationInWindow)),
                 EventDetail("deltaX", String(event.deltaX)),
                 EventDetail("deltaY", String(event.deltaY)),
                 EventDetail("deltaZ", String(event.deltaZ)),
