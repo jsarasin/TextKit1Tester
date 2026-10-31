@@ -51,6 +51,23 @@ or logged to disk.
   UI redraws are coalesced per main-run-loop turn. Notification `userInfo`
   and event-specific NSEvent properties are snapshotted on receipt.
 
+## Apple API documentation links
+
+Small **ⓘ** buttons appear beside recognized Apple event types, callback
+parameters, and event properties in both the live event outline and its floating
+five-occurrence history panel. The main property inspector also adds the same
+button beside documented AppKit properties, without changing editable values.
+Clicking the button opens the matching Apple Developer documentation page in
+the default web browser; merely expanding/inspecting a row does not open a link.
+
+For overridden mouse/keyboard/scroll methods, the link points to the original
+`NSResponder` API rather than an invented page for `InspectorTextView`.
+Known event properties link to their individual `NSEvent` documentation pages,
+and named callback parameters link to their declaring delegate method's page.
+Custom inspector callbacks, derived properties, and arbitrary notification
+dictionary keys intentionally have no button, rather than linking to unrelated
+documentation.
+
 ## Inspection model
 
 - **Always present:** selected range; object references; `NSScrollView`; `NSTextView`; `NSTextContainer`; `NSLayoutManager`; `NSTextStorage`; typing attributes.

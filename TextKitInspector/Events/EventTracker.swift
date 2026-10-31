@@ -172,9 +172,133 @@ enum EventPayload {
     }
 }
 
+/// Links only actual Apple system APIs; custom inspector-only callbacks
+/// and arbitrary notification payload keys intentionally have no link.
+private enum AppleDocumentation {
+    static let root = "https://developer.apple.com/documentation/"
+    static let known: [String: String] = [
+        "NSView.boundsDidChangeNotification": "appkit/nsview/boundsdidchangenotification",
+        "NSTextStorage.willProcessEditingNotification": "appkit/nstextstorage/willprocesseditingnotification",
+        "NSTextStorage.didProcessEditingNotification": "appkit/nstextstorage/didprocesseditingnotification",
+        "NSTextView.didChangeTypingAttributesNotification": "appkit/nstextview/didchangetypingattributesnotification",
+        "NSTextViewDelegate.textViewDidChangeSelection(_:)": "appkit/nstextviewdelegate/textviewdidchangeselection%28_%3A%29",
+        "NSTextViewDelegate.textView(_:doCommandBy:)": "appkit/nstextviewdelegate/textview%28_%3Adocommandby%3A%29",
+        "NSTextViewDelegate.textView(_:shouldChangeTextIn:replacementString:)": "appkit/nstextviewdelegate/textview%28_%3Ashouldchangetextin%3Areplacementstring%3A%29",
+        "NSTextDelegate.textDidChange(_:)": "appkit/nstextdelegate/textdidchange%28_%3A%29",
+        "NSTextDelegate.textDidBeginEditing(_:)": "appkit/nstextdelegate/textdidbeginediting%28_%3A%29",
+        "NSTextDelegate.textDidEndEditing(_:)": "appkit/nstextdelegate/textdidendediting%28_%3A%29",
+        "NSLayoutManagerDelegate.layoutManagerDidInvalidateLayout(_:)": "appkit/nslayoutmanagerdelegate/layoutmanagerdidinvalidatelayout%28_%3A%29",
+        "NSLayoutManagerDelegate.layoutManager(_:didCompleteLayoutFor:atEnd:)": "appkit/nslayoutmanagerdelegate/layoutmanager%28_%3Adidcompletelayoutfor%3Aatend%3A%29",
+        "Notification.name": "foundation/notification/name",
+        "Notification.object": "foundation/notification/object",
+        "Notification.userInfo": "foundation/notification/userinfo",
+        "NSRange.location": "foundation/nsrange/location",
+        "NSRange.length": "foundation/nsrange/length",
+        "NSTextStorage.editedMask": "appkit/nstextstorage/editedmask",
+        "NSTextStorage.editedRange": "appkit/nstextstorage/editedrange",
+        "NSTextStorage.changeInLength": "appkit/nstextstorage/changeinlength",
+        "NSTextStorage.length": "foundation/nsattributedstring/length",
+        "NSTextView.selectedRanges": "appkit/nstextview/selectedranges",
+        "NSTextView.selectedRange()": "appkit/nstextview/selectedrange",
+        "NSTextView.typingAttributes": "appkit/nstextview/typingattributes",
+        "NSClipView.bounds": "appkit/nsview/bounds",
+        "NSLayoutManager.textContainers.count": "appkit/nslayoutmanager/textcontainers",
+        "NSTextContainer.size": "appkit/nstextcontainer/size"
+    ]
+    private static let eventFields: Set<String> = [
+        "type", "windowNumber", "modifierFlags", "characters",
+        "charactersIgnoringModifiers", "keyCode", "isARepeat",
+        "eventNumber", "locationInWindow", "buttonNumber", "clickCount",
+        "pressure", "deltaX", "deltaY", "deltaZ", "scrollingDeltaX",
+        "scrollingDeltaY", "hasPreciseScrollingDeltas", "phase",
+        "momentumPhase", "isDirectionInvertedFromDevice"
+    ]
+    private static let responderMethods: Set<String> = [
+        "keyDown", "keyUp", "flagsChanged", "mouseDown", "mouseUp",
+        "mouseDragged", "rightMouseDown", "rightMouseUp",
+        "rightMouseDragged", "otherMouseDown", "otherMouseUp",
+        "otherMouseDragged", "scrollWheel"
+    ]
+
+    static func url(for symbol: String, eventType: String? = nil) -> URL? {
+        if let path = known[symbol] { return URL(string: root + path) }
+
+        if symbol.hasPrefix("InspectorTextView."), symbol.hasSuffix("(with:)") {
+            // This application's text view overrides NSResponder APIs.
+            let method = String(symbol.dropFirst("InspectorTextView.".count)
+                                      .dropLast("(with:)".count))
+            guard responderMethods.contains(method) else { return nil }
+            return URL(string: root + "appkit/nsresponder/\(method.lowercased())%28with%3A%29")
+        }
+
+        if symbol.hasPrefix("NSEvent.") {
+            let property = String(symbol.dropFirst("NSEvent.".count))
+            if property == "modifierFlags.rawValue" {
+                return URL(string: root + "appkit/nsevent/modifierflags")
+            }
+            guard eventFields.contains(property) else { return nil }
+            return URL(string: root + "appkit/nsevent/\(property.lowercased())")
+        }
+
+        if symbol == "event: NSEvent" || symbol == "parameter.event" {
+            return URL(string: root + "appkit/nsevent")
+        }
+        if symbol == "API.methodOrNotification", let eventType {
+            return url(for: eventType)
+        }
+        // These are parameters, not standalone properties: show their
+        // declaring method's parameter documentation instead.
+        if let eventType, let method = known[eventType],
+           ["affectedCharRange", "replacementString", "commandSelector",
+            "sender.object", "layoutManager.object",
+            "textContainer (NSTextContainer?)", "atEnd"].contains(symbol) {
+            return URL(string: root + method)
+        }
+        return nil
+    }
+}
+
+/// A lightweight button that opens the exact Apple API page in the user's
+/// default browser without activating the outline row's double-click action.
+private final class AppleDocumentationButton: NSButton {
+    private var documentationURL: URL?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        image = NSImage(systemSymbolName: "info.circle",
+                        accessibilityDescription: "Apple Developer Documentation")
+        imagePosition = .imageOnly
+        isBordered = false
+        focusRingType = .none
+        target = self
+        action = #selector(openDocumentation(_:))
+        setAccessibilityLabel("Open Apple Developer documentation")
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: 19),
+            heightAnchor.constraint(equalToConstant: 19)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    func configure(symbol: String, eventType: String? = nil) {
+        documentationURL = AppleDocumentation.url(for: symbol, eventType: eventType)
+        isHidden = documentationURL == nil
+        toolTip = documentationURL == nil ? nil : "Open Apple documentation for \(symbol)"
+    }
+
+    @objc private func openDocumentation(_ sender: Any?) {
+        guard let documentationURL else { return }
+        NSWorkspace.shared.open(documentationURL)
+    }
+}
+
 private final class EventTypeCell: NSTableCellView {
     let toggle = NSButton(title: "Pause", target: nil, action: nil)
     let eventName = NSTextField(labelWithString: "")
+    let documentationButton = AppleDocumentationButton(frame: .zero)
     let summary = NSTextField(labelWithString: "")
     let badge = NSTextField(labelWithString: "")
 
@@ -204,7 +328,7 @@ private final class EventTypeCell: NSTableCellView {
         badge.setContentHuggingPriority(.required, for: .horizontal)
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let stack = NSStackView(views: [toggle, eventName, summary, badge])
+        let stack = NSStackView(views: [toggle, eventName, documentationButton, summary, badge])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 8
@@ -223,38 +347,59 @@ private final class EventTypeCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
 }
 
-private func detailCell(_ text: String, tooltip: String? = nil) -> NSTableCellView {
+private func detailCell(_ detail: EventDetail, eventType: String?) -> NSTableCellView {
     let cell = NSTableCellView()
-    let field = NSTextField(labelWithString: text)
+    let field = NSTextField(labelWithString: "\(detail.name): \(detail.value)")
     field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
     field.lineBreakMode = .byTruncatingTail
-    field.toolTip = tooltip ?? text
-    field.translatesAutoresizingMaskIntoConstraints = false
-    cell.addSubview(field)
+    field.toolTip = "\(detail.name): \(detail.value)"
+    field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    let info = AppleDocumentationButton(frame: .zero)
+    info.configure(symbol: detail.name, eventType: eventType)
+    let stack = NSStackView(views: [field, info])
+    stack.orientation = .horizontal
+    stack.alignment = .centerY
+    stack.spacing = 5
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    cell.addSubview(stack)
     NSLayoutConstraint.activate([
-        field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 3),
-        field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
-        field.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 3),
+        stack.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
+        stack.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
     ])
     return cell
 }
 
 /// History values wrap instead of truncating, so captured values remain readable
 /// and selectable, even when the payload is wider than the window.
-private func historyCell(_ text: String) -> NSTableCellView {
+private func historyCell(_ text: String,
+                         documentationSymbol: String? = nil,
+                         eventType: String? = nil) -> NSTableCellView {
     let cell = NSTableCellView()
     let field = NSTextField(wrappingLabelWithString: text)
     field.isSelectable = true
     field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
     field.maximumNumberOfLines = 0
     field.toolTip = text
-    field.translatesAutoresizingMaskIntoConstraints = false
-    cell.addSubview(field)
+    field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+    let info = AppleDocumentationButton(frame: .zero)
+    if let documentationSymbol {
+        info.configure(symbol: documentationSymbol, eventType: eventType)
+    } else {
+        info.isHidden = true
+    }
+    let stack = NSStackView(views: [field, info])
+    stack.orientation = .horizontal
+    stack.alignment = .top
+    stack.spacing = 5
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    cell.addSubview(stack)
     NSLayoutConstraint.activate([
-        field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-        field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
-        field.topAnchor.constraint(equalTo: cell.topAnchor, constant: 4),
-        field.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -4)
+        stack.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+        stack.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -5),
+        stack.topAnchor.constraint(equalTo: cell.topAnchor, constant: 4),
+        stack.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -4)
     ])
     return cell
 }
@@ -296,14 +441,22 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
         title.lineBreakMode = .byTruncatingTail
         title.toolTip = record.name
         title.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(title)
+        let titleDocumentation = AppleDocumentationButton(frame: .zero)
+        titleDocumentation.configure(symbol: record.name)
+        let titleRow = NSStackView(views: [title, titleDocumentation])
+        titleRow.orientation = .horizontal
+        titleRow.alignment = .centerY
+        titleRow.spacing = 5
+        titleRow.translatesAutoresizingMaskIntoConstraints = false
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        host.addSubview(titleRow)
         host.addSubview(scroll)
         panel.contentView = host
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: host.topAnchor, constant: 12),
-            title.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 12),
-            title.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -12),
-            scroll.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 10),
+            titleRow.topAnchor.constraint(equalTo: host.topAnchor, constant: 12),
+            titleRow.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 12),
+            titleRow.trailingAnchor.constraint(lessThanOrEqualTo: host.trailingAnchor, constant: -12),
+            scroll.topAnchor.constraint(equalTo: titleRow.bottomAnchor, constant: 10),
             scroll.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -8),
             scroll.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 8),
             scroll.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -8)
@@ -357,7 +510,8 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
             return historyCell("Occurrence \(index + 1) — \(occurrence.summary)")
         }
         guard let detail = item as? EventDetail else { return nil }
-        return historyCell("\(detail.name): \(detail.value)")
+        return historyCell("\(detail.name): \(detail.value)",
+                           documentationSymbol: detail.name, eventType: record.name)
     }
 }
 
@@ -532,11 +686,21 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
         return !((item as? EventDetail)?.children.isEmpty ?? true)
     }
 
+    private func parentEventType(for detail: EventDetail) -> String? {
+        var current: Any = detail
+        while let parent = outline.parent(forItem: current) {
+            if let type = parent as? EventTypeRecord { return type.name }
+            current = parent
+        }
+        return nil
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         if let type = item as? EventTypeRecord {
             let cell = EventTypeCell(frame: .zero)
             cell.eventName.stringValue = type.name
             cell.eventName.toolTip = type.name
+            cell.documentationButton.configure(symbol: type.name)
             cell.summary.stringValue = type.latest?.summary ?? ""
             cell.summary.toolTip = type.latest?.summary
             cell.toggle.title = type.isEnabled ? "Pause" : "Play"
@@ -549,6 +713,6 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
             return cell
         }
         guard let detail = item as? EventDetail else { return nil }
-        return detailCell("\(detail.name): \(detail.value)")
+        return detailCell(detail, eventType: parentEventType(for: detail))
     }
 }
