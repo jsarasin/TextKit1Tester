@@ -337,7 +337,9 @@ enum InspectionContext {
             if n > 60 { add("run-overflow", "More attribute runs", "Truncated for UI responsiveness", [p("omitted", n - 60, "See source code to increase limit", .derived)]) }
         }
         let description = block.map { "Table cell R\($0.startingRow + 1) C\($0.startingColumn + 1)" }
-            ?? (attachment != nil ? "Image attachment" : ps?.textLists.isEmpty == false ? "List paragraph" : "Text paragraph")
+            ?? (attachment?.attachmentCell is HorizontalRuleCell ? "Horizontal rule attachment" :
+                attachment != nil ? "Image attachment" :
+                ps?.textLists.isEmpty == false ? "List paragraph" : "Text paragraph")
         return InspectionSnapshot(summary: selection.length == 0 ? "Caret at \(selection.location)" : "Selection \(rangeString)",
                                   subtitle: count == 0 ? "Empty document" : description,
                                   groups: groups)
