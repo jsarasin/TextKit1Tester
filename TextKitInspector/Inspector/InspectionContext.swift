@@ -199,7 +199,8 @@ enum InspectionContext {
             add("foreground", "NSColor — Foreground", id(foreground), [
                 p("description", foreground),
                 p("sRGB hex", hex(foreground), "Enter #RRGGBB", .derived, .textColor),
-                p("colorSpace", String(describing: foreground.colorSpace))
+                p("convertedColorSpace", foreground.usingColorSpace(.deviceRGB).map { String(describing: $0.colorSpace) } ?? "Unavailable (conversion failed)",
+                  "The original NSColor may be a dynamic system or catalog color; this is the converted RGB color space", .derived)
             ])
         }
         if let background = activeAttributes[.backgroundColor] as? NSColor {
