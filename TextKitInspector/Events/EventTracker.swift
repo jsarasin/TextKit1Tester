@@ -15,13 +15,12 @@ final class EventDetail: NSObject {
 }
 
 final class EventOccurrence: NSObject {
-    let date = Date()
     let summary: String
     let details: [EventDetail]
 
     init(summary: String, details: [EventDetail]) {
         self.summary = summary
-        self.details = [EventDetail("receivedAt", String(describing: date))] + details
+        self.details = details
     }
 }
 
@@ -60,6 +59,14 @@ final class EventRecorder {
         scheduleRefresh()
     }
 
+    /// Clear all rows, retained snapshots, and unread counts. Re-added event
+    /// types start enabled; the global recording switch is left unchanged.
+    func clear() {
+        types.removeAll()
+        lookup.removeAll()
+        scheduleRefresh()
+    }
+
     func inspect(_ item: EventTypeRecord) {
         guard item.unreadCount > 0 else { return }
         item.unreadCount = 0
@@ -88,20 +95,20 @@ final class EventRecorder {
 enum EventPayload {
     static func range(_ name: String, _ range: NSRange) -> EventDetail {
         EventDetail(name, NSStringFromRange(range), children: [
-            EventDetail("location", String(range.location)),
-            EventDetail("length", String(range.length))
+            EventDetail("NSRange.location", String(range.location)),
+            EventDetail("NSRange.length", String(range.length))
         ])
     }
 
     static func notification(_ notification: Notification) -> [EventDetail] {
         var fields = [
-            EventDetail("notification.name", notification.name.rawValue),
-            EventDetail("notification.object", notification.object.map { String(reflecting: type(of: $0)) } ?? "nil")
+            EventDetail("Notification.name", notification.name.rawValue),
+            EventDetail("Notification.object", notification.object.map { String(reflecting: type(of: $0)) } ?? "nil")
         ]
         let info = (notification.userInfo ?? [:]).map {
             EventDetail(String(describing: $0.key), String(reflecting: $0.value))
         }.sorted { $0.name < $1.name }
-        fields.append(EventDetail("userInfo", "\(info.count) fields", children: info))
+        fields.append(EventDetail("Notification.userInfo", "\(info.count) fields", children: info))
         return fields
     }
 
@@ -110,7 +117,6 @@ enum EventPayload {
         // properties are read for the wrong event type.
         var fields = [
             EventDetail("type", String(describing: event.type)),
-            EventDetail("timestamp", String(format: "%.6f", event.timestamp)),
             EventDetail("windowNumber", String(event.windowNumber)),
             EventDetail("modifierFlags", String(describing: event.modifierFlags)),
             EventDetail("modifierFlags.rawValue", String(event.modifierFlags.rawValue))
@@ -160,7 +166,9 @@ enum EventPayload {
             ]
         default: break
         }
-        return fields
+        return [EventDetail("event: NSEvent", String(reflecting: type(of: event)), children:
+            fields.map { EventDetail("NSEvent.\($0.name)", $0.value, children: $0.children) }
+        )]
     }
 }
 
@@ -258,12 +266,16 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
 
     init(record: EventTypeRecord) {
         self.record = record
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 830, height: 470),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                              backing: .buffered, defer: false)
-        window.title = "\(record.name) — Recent Events (max 5)"
-        window.center()
-        super.init(window: window)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 830, height: 470),
+                            styleMask: [.titled, .closable, .resizable, .utilityWindow],
+                            backing: .buffered, defer: false)
+        panel.title = "Event History"
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.center()
+        super.init(window: panel)
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -279,10 +291,19 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
         scroll.documentView = outline
         scroll.translatesAutoresizingMaskIntoConstraints = false
         let host = NSView()
+        let title = NSTextField(labelWithString: record.name)
+        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.lineBreakMode = .byTruncatingTail
+        title.toolTip = record.name
+        title.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(title)
         host.addSubview(scroll)
-        window.contentView = host
+        panel.contentView = host
         NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: host.topAnchor, constant: 8),
+            title.topAnchor.constraint(equalTo: host.topAnchor, constant: 12),
+            title.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 12),
+            title.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -12),
+            scroll.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 10),
             scroll.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -8),
             scroll.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 8),
             scroll.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -8)
@@ -291,6 +312,18 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+
+    /// Keep the utility panel above its owning main window, not merely above
+    /// other windows on the desktop.
+    func show(above parent: NSWindow?) {
+        guard let panel = window else { return }
+        if let parent, panel.parent !== parent {
+            panel.parent?.removeChildWindow(panel)
+            parent.addChildWindow(panel, ordered: .above)
+        }
+        showWindow(nil)
+        panel.orderFront(nil)
+    }
 
     func reload() {
         let expanded = record.history.filter { outline.isItemExpanded($0) }
@@ -320,8 +353,8 @@ final class EventHistoryWindowController: NSWindowController, NSOutlineViewDataS
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         if let occurrence = item as? EventOccurrence {
-            let date = DateFormatter.localizedString(from: occurrence.date, dateStyle: .none, timeStyle: .medium)
-            return historyCell("\(date)     \(occurrence.summary)")
+            let index = record.history.firstIndex(where: { $0 === occurrence }) ?? 0
+            return historyCell("Occurrence \(index + 1) — \(occurrence.summary)")
         }
         guard let detail = item as? EventDetail else { return nil }
         return historyCell("\(detail.name): \(detail.value)")
@@ -332,6 +365,7 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
     private let recorder: EventRecorder
     private let outline = NSOutlineView()
     private let globalButton = NSButton()
+    private let clearButton = NSButton()
     private var historyWindows: [String: EventHistoryWindowController] = [:]
 
     init(recorder: EventRecorder) {
@@ -356,11 +390,22 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
         globalButton.controlSize = .small
         syncGlobalButton()
 
-        let hint = NSTextField(labelWithString: "Double-click an event for its last 5 occurrences")
+        let hint = NSTextField(labelWithString: "Double-click for last 5 occurrences")
         hint.font = .systemFont(ofSize: 10)
         hint.textColor = .tertiaryLabelColor
+        hint.lineBreakMode = .byTruncatingTail
+        hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let header = NSStackView(views: [heading, globalButton, hint])
+        clearButton.title = "Clear"
+        clearButton.target = self
+        clearButton.action = #selector(clearEvents(_:))
+        clearButton.bezelStyle = .rounded
+        clearButton.controlSize = .small
+        clearButton.toolTip = "Clear the event list and all retained histories"
+
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let header = NSStackView(views: [heading, globalButton, hint, spacer, clearButton])
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 10
@@ -389,7 +434,7 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: host.topAnchor, constant: 8),
             header.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 9),
-            header.trailingAnchor.constraint(lessThanOrEqualTo: host.trailingAnchor, constant: -8),
+            header.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -9),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 6),
             scroll.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 7),
             scroll.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -7),
@@ -416,6 +461,17 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
         recorder.isEnabled.toggle()
     }
 
+    @objc private func clearEvents(_ sender: NSButton) {
+        for controller in historyWindows.values {
+            if let panel = controller.window {
+                panel.parent?.removeChildWindow(panel)
+            }
+            controller.close()
+        }
+        historyWindows.removeAll()
+        recorder.clear()
+    }
+
     @objc private func toggleType(_ sender: NSButton) {
         guard recorder.types.indices.contains(sender.tag) else { return }
         let item = recorder.types[sender.tag]
@@ -439,8 +495,7 @@ final class EventTrackerViewController: NSViewController, NSOutlineViewDataSourc
             historyWindows[record.name] = controller
         }
         controller.reload()
-        controller.showWindow(nil)
-        controller.window?.makeKeyAndOrderFront(nil)
+        controller.show(above: view.window)
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
