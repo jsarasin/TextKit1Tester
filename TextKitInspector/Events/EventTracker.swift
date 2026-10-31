@@ -141,18 +141,18 @@ enum EventPayload {
                 EventDetail("locationInWindow", NSStringFromPoint(event.locationInWindow)),
                 EventDetail("buttonNumber", String(event.buttonNumber)),
                 EventDetail("pressure", String(event.pressure)),
-                EventDetail("deltaX", String(event.deltaX)),
-                EventDetail("deltaY", String(event.deltaY)),
-                EventDetail("deltaZ", String(event.deltaZ))
+                EventDetail("deltaX", String(describing: event.deltaX)),
+                EventDetail("deltaY", String(describing: event.deltaY)),
+                EventDetail("deltaZ", String(describing: event.deltaZ))
             ]
         case .scrollWheel:
             fields += [
                 EventDetail("locationInWindow", NSStringFromPoint(event.locationInWindow)),
-                EventDetail("deltaX", String(event.deltaX)),
-                EventDetail("deltaY", String(event.deltaY)),
-                EventDetail("deltaZ", String(event.deltaZ)),
-                EventDetail("scrollingDeltaX", String(event.scrollingDeltaX)),
-                EventDetail("scrollingDeltaY", String(event.scrollingDeltaY)),
+                EventDetail("deltaX", String(describing: event.deltaX)),
+                EventDetail("deltaY", String(describing: event.deltaY)),
+                EventDetail("deltaZ", String(describing: event.deltaZ)),
+                EventDetail("scrollingDeltaX", String(describing: event.scrollingDeltaX)),
+                EventDetail("scrollingDeltaY", String(describing: event.scrollingDeltaY)),
                 EventDetail("hasPreciseScrollingDeltas", String(event.hasPreciseScrollingDeltas)),
                 EventDetail("phase", String(describing: event.phase)),
                 EventDetail("momentumPhase", String(describing: event.momentumPhase)),
