@@ -3,6 +3,8 @@ import AppKit
 final class MainWindowController: NSWindowController {
     private let editor = EditorController()
     private let inspector = InspectorViewController()
+    private let eventRecorder = EventRecorder()
+    private lazy var eventTracker = EventTrackerViewController(recorder: eventRecorder)
     private let status = NSTextField(labelWithString: "")
 
     convenience init() {
@@ -15,6 +17,9 @@ final class MainWindowController: NSWindowController {
         buildUI()
         editor.onContextChanged = { [weak self] in self?.refreshInspector() }
         inspector.onEdit = { [weak self] action, value in self?.editor.apply(action: action, text: value) }
+        editor.onEvent = { [weak self] name, summary, details in
+            self?.eventRecorder.record(name, summary: summary, details: details)
+        }
         refreshInspector()
         window.makeFirstResponder(editor.textView)
     }
@@ -53,13 +58,20 @@ final class MainWindowController: NSWindowController {
 
         let editorHost = NSView()
         editorHost.translatesAutoresizingMaskIntoConstraints = false
+        let eventPanel = eventTracker.view
         editorHost.addSubview(editor.scrollView)
+        editorHost.addSubview(eventPanel)
         editor.scrollView.translatesAutoresizingMaskIntoConstraints = false
+        eventPanel.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             editor.scrollView.topAnchor.constraint(equalTo: editorHost.topAnchor),
             editor.scrollView.leadingAnchor.constraint(equalTo: editorHost.leadingAnchor),
             editor.scrollView.trailingAnchor.constraint(equalTo: editorHost.trailingAnchor),
-            editor.scrollView.bottomAnchor.constraint(equalTo: editorHost.bottomAnchor)
+            editor.scrollView.bottomAnchor.constraint(equalTo: eventPanel.topAnchor),
+            eventPanel.leadingAnchor.constraint(equalTo: editorHost.leadingAnchor),
+            eventPanel.trailingAnchor.constraint(equalTo: editorHost.trailingAnchor),
+            eventPanel.bottomAnchor.constraint(equalTo: editorHost.bottomAnchor),
+            eventPanel.heightAnchor.constraint(equalToConstant: 235)
         ])
 
         let properties = inspector.view
