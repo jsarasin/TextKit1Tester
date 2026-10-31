@@ -2,13 +2,27 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// Owns the real TextKit 1 graph and editing transactions.
-final class EditorController: NSObject, NSTextViewDelegate {
+final class EditorController: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
     let textView: InspectorTextView
     let scrollView: NSScrollView
     let textStorage: NSTextStorage
     let layoutManager: NSLayoutManager
     let textContainer: NSTextContainer
     var onContextChanged: (() -> Void)?
+    var onEvent: ((String, String, [EventDetail]) -> Void)?
+
+    private func report(_ name: String, _ summary: String, _ fields: [EventDetail]) {
+        onEvent?(name, summary, fields)
+    }
+
+    private func editingDetails(_ notification: Notification) -> [EventDetail] {
+        EventPayload.notification(notification) + [
+            EventDetail("editedMask", String(describing: textStorage.editedMask)),
+            EventPayload.range("editedRange", textStorage.editedRange),
+            EventDetail("changeInLength", String(textStorage.changeInLength)),
+            EventDetail("storageLength", String(textStorage.length))
+        ]
+    }
     private(set) var inspectionRange = NSRange(location: 0, length: 0)
 
     override init() {
@@ -44,7 +58,19 @@ final class EditorController: NSObject, NSTextViewDelegate {
         text.font = .systemFont(ofSize: 15)
         text.backgroundColor = .textBackgroundColor
         text.delegate = self
-        text.selectionDidMove = { [weak self] in self?.changed() }
+        text.selectionDidMove = { [weak self] in
+            guard let self else { return }
+            self.changed()
+            let range = self.textView.selectedRange()
+            self.report("setSelectedRange / input selection", NSStringFromRange(range), [
+                EventPayload.range("selection", range),
+                EventDetail("storageLength", String(self.textStorage.length))
+            ])
+        }
+        text.onInputEvent = { [weak self] name, summary, details in
+            self?.report(name, summary, details)
+        }
+        layout.delegate = self
 
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
@@ -54,6 +80,8 @@ final class EditorController: NSObject, NSTextViewDelegate {
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(contentMoved),
             name: NSView.boundsDidChangeNotification, object: scroll.contentView)
+        NotificationCenter.default.addObserver(self, selector: #selector(storageWillEdit),
+            name: NSTextStorage.willProcessEditingNotification, object: storage)
         NotificationCenter.default.addObserver(self, selector: #selector(storageEdited),
             name: NSTextStorage.didProcessEditingNotification, object: storage)
         NotificationCenter.default.addObserver(self, selector: #selector(typingChanged),
@@ -63,17 +91,99 @@ final class EditorController: NSObject, NSTextViewDelegate {
 
     deinit { NotificationCenter.default.removeObserver(self) }
 
-    @objc private func contentMoved(_ notification: Notification) { onContextChanged?() }
-    @objc private func storageEdited(_ notification: Notification) { onContextChanged?() }
-    @objc private func typingChanged(_ notification: Notification) { onContextChanged?() }
+    @objc private func contentMoved(_ notification: Notification) {
+        let bounds = scrollView.contentView.bounds
+        report("Scroll bounds changed", "origin=\(NSStringFromPoint(bounds.origin))", EventPayload.notification(notification) + [
+            EventDetail("visibleBounds", NSStringFromRect(bounds))
+        ])
+        onContextChanged?()
+    }
+
+    @objc private func storageWillEdit(_ notification: Notification) {
+        report("NSTextStorage willProcessEditing", NSStringFromRange(textStorage.editedRange),
+               editingDetails(notification))
+    }
+
+    @objc private func storageEdited(_ notification: Notification) {
+        report("NSTextStorage didProcessEditing", NSStringFromRange(textStorage.editedRange),
+               editingDetails(notification))
+        onContextChanged?()
+    }
+
+    @objc private func typingChanged(_ notification: Notification) {
+        let attrs = textView.typingAttributes.map {
+            EventDetail($0.key.rawValue, String(reflecting: $0.value))
+        }.sorted { $0.name < $1.name }
+        report("Typing attributes changed", "\(attrs.count) attributes",
+               EventPayload.notification(notification) + [EventDetail("typingAttributes", "\(attrs.count) fields", children: attrs)])
+        onContextChanged?()
+    }
 
     private func changed() {
         inspectionRange = textView.selectedRange()
         onContextChanged?()
     }
 
-    func textViewDidChangeSelection(_ notification: Notification) { changed() }
-    func textDidChange(_ notification: Notification) { changed() }
+    func textViewDidChangeSelection(_ notification: Notification) {
+        changed()
+        report("textViewDidChangeSelection", NSStringFromRange(inspectionRange),
+               EventPayload.notification(notification) + [
+                   EventPayload.range("selectedRange", inspectionRange),
+                   EventDetail("selectedRanges", String(describing: textView.selectedRanges))
+               ])
+    }
+
+    func textDidChange(_ notification: Notification) {
+        changed()
+        report("textDidChange", "length=\(textStorage.length)",
+               EventPayload.notification(notification) + [
+                   EventDetail("storageLength", String(textStorage.length)),
+                   EventPayload.range("selectedRange", textView.selectedRange())
+               ])
+    }
+
+    func textDidBeginEditing(_ notification: Notification) {
+        report("textDidBeginEditing", "editing began", EventPayload.notification(notification))
+    }
+
+    func textDidEndEditing(_ notification: Notification) {
+        report("textDidEndEditing", "editing ended", EventPayload.notification(notification))
+    }
+
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        report("textView doCommandBy", NSStringFromSelector(commandSelector), [
+            EventDetail("selector", NSStringFromSelector(commandSelector)),
+            EventPayload.range("selectedRange", textView.selectedRange())
+        ])
+        return false
+    }
+
+    func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
+                  replacementString: String?) -> Bool {
+        report("textView shouldChangeTextIn", NSStringFromRange(affectedCharRange), [
+            EventPayload.range("affectedCharRange", affectedCharRange),
+            EventDetail("replacementString", String(reflecting: replacementString)),
+            EventDetail("replacementUTF16Length", String(replacementString?.utf16.count ?? 0))
+        ])
+        return true
+    }
+
+    func layoutManagerDidInvalidateLayout(_ sender: NSLayoutManager) {
+        report("layoutManagerDidInvalidateLayout", "layout invalidated", [
+            EventDetail("textContainers", String(sender.textContainers.count)),
+            EventDetail("storageLength", String(sender.textStorage?.length ?? 0))
+        ])
+    }
+
+    func layoutManager(_ layoutManager: NSLayoutManager,
+                       didCompleteLayoutFor textContainer: NSTextContainer?,
+                       atEnd layoutFinishedFlag: Bool) {
+        report("layoutManager didCompleteLayoutFor", "atEnd=\(layoutFinishedFlag)", [
+            EventDetail("textContainer", textContainer.map { String(reflecting: $0) } ?? "nil"),
+            EventDetail("atEnd", String(layoutFinishedFlag)),
+            EventDetail("usedRect", textContainer.map { NSStringFromRect(layoutManager.usedRect(for: $0)) } ?? "nil")
+        ])
+    }
 
     func reset() {
         let image = Bundle.main.url(forResource: "SampleImage", withExtension: "png")
