@@ -6,12 +6,12 @@ final class MainWindowController: NSWindowController {
     private let status = NSTextField(labelWithString: "")
 
     convenience init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1460, height: 860),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1520, height: 860),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         window.title = "TextKit Inspector — Native TextKit 1 Laboratory"
         window.center()
-        window.minSize = NSSize(width: 950, height: 580)
+        window.minSize = NSSize(width: 1000, height: 580)
         self.init(window: window)
         buildUI()
         editor.onContextChanged = { [weak self] in self?.refreshInspector() }
@@ -59,10 +59,12 @@ final class MainWindowController: NSWindowController {
             editor.scrollView.trailingAnchor.constraint(equalTo: editorHost.trailingAnchor),
             editor.scrollView.bottomAnchor.constraint(equalTo: editorHost.bottomAnchor)
         ])
-        split.addArrangedSubview(editorHost)
+        // The exhaustive property inspector lives to the LEFT of the document.
+        // Drag the divider to make it wider; editing content stays on the right.
         split.addArrangedSubview(inspector.view)
-        editorHost.widthAnchor.constraint(greaterThanOrEqualToConstant: 470).isActive = true
-        inspector.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 335).isActive = true
+        split.addArrangedSubview(editorHost)
+        inspector.view.widthAnchor.constraint(greaterThanOrEqualToConstant: 380).isActive = true
+        editorHost.widthAnchor.constraint(greaterThanOrEqualToConstant: 460).isActive = true
 
         status.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         status.textColor = .secondaryLabelColor
@@ -80,8 +82,11 @@ final class MainWindowController: NSWindowController {
             status.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -7),
             status.heightAnchor.constraint(equalToConstant: 17)
         ])
-        // Initial width is approximate; NSSplitView allows interactive resizing.
-        split.setPosition(940, ofDividerAt: 0)
+        // Start with a comfortable inspector width. The split divider remains freely draggable.
+        // Position after Auto Layout installs the split-view geometry.
+        DispatchQueue.main.async { [weak split] in
+            split?.setPosition(535, ofDividerAt: 0)
+        }
     }
 
     private func refreshInspector() {
