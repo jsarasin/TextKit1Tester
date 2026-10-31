@@ -1,5 +1,41 @@
 import AppKit
 
+/// An atomic horizontal divider rendered by the TextKit 1 attachment cell API.
+/// It measures itself against the current line fragment instead of storing a
+/// fixed-width bitmap, so it tracks the text container's width.
+final class HorizontalRuleCell: NSTextAttachmentCell {
+    private let ruleHeight: CGFloat = 20
+
+    override func cellSize() -> NSSize {
+        NSSize(width: 1, height: ruleHeight)
+    }
+
+    override func cellFrame(for textContainer: NSTextContainer,
+                            proposedLineFragment lineFrag: NSRect,
+                            glyphPosition position: NSPoint,
+                            characterIndex charIndex: Int) -> NSRect {
+        NSRect(x: 0, y: 0,
+               width: max(1, lineFrag.maxX - position.x),
+               height: ruleHeight)
+    }
+
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
+        drawRule(in: cellFrame)
+    }
+
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView?,
+                       characterIndex charIndex: Int, layoutManager: NSLayoutManager) {
+        drawRule(in: cellFrame)
+    }
+
+    private func drawRule(in frame: NSRect) {
+        let inset: CGFloat = 4
+        NSColor.separatorColor.setFill()
+        NSRect(x: frame.minX + inset, y: frame.midY - 0.5,
+               width: max(0, frame.width - 2 * inset), height: 1).fill()
+    }
+}
+
 /// Every visible image/table is real attributed-string content, not an overlay view.
 enum SampleDocument {
     static func make(image: NSImage?) -> NSAttributedString {
@@ -55,6 +91,11 @@ enum SampleDocument {
             append("\nImage caption: select the attachment character to inspect its object and display geometry.\n\n")
         }
 
+        append("Horizontal rule attachment\n", font: heading)
+        append("This separator is a custom NSTextAttachmentCell, not an image or a line of dashes.\n")
+        result.append(makeHorizontalRule())
+        append("\nSelect the rule to inspect its attachment character. It follows the text width as the window resizes.\n\n")
+
         append("Native 4 × 4 text table\n", font: heading)
         append("Every cell is a paragraph whose style contains an NSTextTableBlock.\n")
         result.append(makeTable())
@@ -62,6 +103,15 @@ enum SampleDocument {
         append("Text continues below the table with no page boundary. You can add arbitrarily more content, resize the window, and inspect new formatting and layout regions.\n\n")
         append("End of sample.\n", extra: [.foregroundColor: NSColor.secondaryLabelColor])
         return result
+    }
+
+    /// One selectable U+FFFC attachment character; callers put it in its
+    /// own paragraph so it spans the full available line fragment.
+    static func makeHorizontalRule() -> NSAttributedString {
+        let attachment = NSTextAttachment()
+        attachment.allowsTextAttachmentView = false
+        attachment.attachmentCell = HorizontalRuleCell()
+        return NSAttributedString(attachment: attachment)
     }
 
     static func makeTable() -> NSAttributedString {

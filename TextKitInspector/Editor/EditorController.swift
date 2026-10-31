@@ -89,6 +89,32 @@ final class EditorController: NSObject, NSTextViewDelegate {
 
     func insertTable() { replaceSelected(with: SampleDocument.makeTable()) }
 
+    func insertHorizontalRule() {
+        let selection = textView.rangeForUserTextChange
+        guard selection.location != NSNotFound,
+              NSMaxRange(selection) <= textStorage.length else { return }
+
+        // A rule is a block-level element, represented by an attachment
+        // character in its own paragraph. Avoid introducing a blank paragraph
+        // when the caret already sits at a paragraph boundary.
+        let text = textStorage.string as NSString
+        let needsLeadingNewline = selection.location > 0 &&
+            text.character(at: selection.location - 1) != 10
+        let afterSelection = NSMaxRange(selection)
+        let needsTrailingNewline = afterSelection == textStorage.length ||
+            text.character(at: afterSelection) != 10
+
+        let insertion = NSMutableAttributedString(string: "")
+        if needsLeadingNewline {
+            insertion.append(NSAttributedString(string: "\n"))
+        }
+        insertion.append(SampleDocument.makeHorizontalRule())
+        if needsTrailingNewline {
+            insertion.append(NSAttributedString(string: "\n"))
+        }
+        replaceSelected(with: insertion)
+    }
+
     func insertImage() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
