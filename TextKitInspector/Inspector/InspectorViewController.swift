@@ -93,6 +93,22 @@ private final class FlexibleInspectorCell: NSTableCellView {
     }
 }
 
+/// Root-level sections get a full-width, appearance-aware background rather
+/// than relying on indentation and font weight alone to signal hierarchy.
+private final class InspectorCategoryRowView: NSTableRowView {
+    override func drawBackground(in dirtyRect: NSRect) {
+        NSColor.controlBackgroundColor.setFill()
+        NSRectFill(bounds)
+
+        NSColor.controlAccentColor.withAlphaComponent(0.15).setFill()
+        NSRectFill(bounds)
+
+        NSColor.separatorColor.setFill()
+        NSRectFill(NSRect(x: bounds.minX, y: bounds.minY,
+                          width: bounds.width, height: 1))
+    }
+}
+
 final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
                                      NSOutlineViewDataSource, NSOutlineViewDelegate {
     var onEdit: ((PropertyAction, String) -> Void)?
@@ -409,12 +425,20 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
         guard let node = item as? InspectorNode else { return 30 }
         switch node.entry {
-        case .category: return 36
+        case .category: return 44
         case .group: return 34
         case .folder: return 29
         case .property: return 31
         case let .cellGrid(_, _, rows, _): return CGFloat(min(max(rows, 1), 6) * 25 + 10)
         }
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForRow row: Int) -> NSTableRowView? {
+        guard let node = outlineView.item(atRow: row) as? InspectorNode else { return nil }
+        if case .category = node.entry {
+            return InspectorCategoryRowView()
+        }
+        return nil
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -424,7 +448,7 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         switch node.entry {
         case let .category(title):
             if isName {
-                return textCell(title, font: .systemFont(ofSize: 14, weight: .semibold),
+                return textCell(title, font: .systemFont(ofSize: 16, weight: .bold),
                                 alignment: .left, color: .labelColor)
             }
             return textCell("", font: .systemFont(ofSize: 12),
