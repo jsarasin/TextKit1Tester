@@ -114,7 +114,7 @@ enum InspectionContext {
             p("insetUniform (editable)", view.textContainerInset.width, "Apply a common inset in points", .derived, .textInset),
             p("minSize", size(view.minSize)), p("maxSize", size(view.maxSize)),
             p("backgroundColor", optional(view.backgroundColor)),
-            p("isAutomaticSpellCheckingEnabled", view.isAutomaticSpellCheckingEnabled),
+            p("isContinuousSpellCheckingEnabled", view.isContinuousSpellCheckingEnabled),
             p("usesFindBar", view.usesFindBar), p("usesFontPanel", view.usesFontPanel)
         ])
         add("container", "NSTextContainer", id(container), [
