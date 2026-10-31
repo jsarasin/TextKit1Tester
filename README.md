@@ -15,7 +15,7 @@ There are no package dependencies, accounts, plugins, or servers. The deployment
 ## How to explore
 
 - Click or select text on the left; inspect the live class/object sections on the right. Move into different table cells or select the image. Only applicable contextual classes appear.
-- Expand the class sections, filter properties by name or value, and copy individual values.
+- Expand **Selection**, **Text System**, **Text Formatting**, **Tables**, **Attachments & Images**, and **Attribute Runs** to inspect their live object classes. Dotted property paths expand hierarchically (for example, `padding → left → valueType`). Filter by category, class, property path, value, or description; matching ancestors expand automatically. Copy individual values from the context menu.
 - Enter supported property values and press **Return**. Examples: font size `22`, foreground colour `#FF8800`, alignment `center`, image display width `300`, table padding `8`.
 - Use **Reset Document** to load the formatted example including a real image attachment and a 4×4 native text table.
 - Use **Apple Table Panel** to experiment with the operating system's table-editing UI.
