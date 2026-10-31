@@ -3,19 +3,24 @@ import AppKit
 /// A native, expandable two-column property grid. Rows are backed by actual
 /// InspectionSnapshot data, never by a parallel set of display-only values.
 private enum InspectorEntry {
+    case category(String)
     case group(InspectionGroup)
+    case folder(String)
     case property(InspectedProperty)
     case cellGrid(row: Int, column: Int, rows: Int, columns: Int)
 }
 
 private final class InspectorNode: NSObject {
     let key: String
-    let entry: InspectorEntry
+    var entry: InspectorEntry
+    let displayName: String?
     var children: [InspectorNode]
 
-    init(key: String, entry: InspectorEntry, children: [InspectorNode] = []) {
+    init(key: String, entry: InspectorEntry, displayName: String? = nil,
+         children: [InspectorNode] = []) {
         self.key = key
         self.entry = entry
+        self.displayName = displayName
         self.children = children
     }
 }
@@ -94,6 +99,8 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
 
     private var snapshot: InspectionSnapshot?
     private var expanded: Set<String> = [
+        "section-selection", "section-system", "section-formatting",
+        "section-tables", "section-attachments", "section-runs",
         "context", "relationships", "tableCell", "table", "attachment", "font"
     ]
     private var filter = ""
@@ -119,7 +126,7 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         subtitleLabel.font = .systemFont(ofSize: 13)
         subtitleLabel.textColor = .secondaryLabelColor
         search.font = .systemFont(ofSize: 13)
-        search.placeholderString = "Filter classes or properties…"
+        search.placeholderString = "Filter categories, classes or properties…"
         search.delegate = self
 
         let header = NSStackView(views: [titleLabel, subtitleLabel, search])
@@ -148,7 +155,7 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         // header, user-adjustable column widths, keyboard navigation, and
         // visible-row reuse rather than rebuilding hundreds of stack views.
         nameColumn.title = "Property"
-        nameColumn.width = 195
+        nameColumn.width = 255
         nameColumn.minWidth = 0
         valueColumn.title = "Value"
         valueColumn.width = 330
@@ -213,7 +220,7 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
     }
 
     @objc private func expandAll(_ sender: Any?) {
-        expanded = Set(snapshot?.groups.map(\.key) ?? [])
+        expanded = expandableKeys(in: nodes)
         render()
     }
 
@@ -222,8 +229,96 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         render()
     }
 
-    /// Rebuild the lightweight row model, retaining which sections were open
-    /// and the outline's vertical scroll position.
+    /// Display categories group related AppKit objects, but the snapshot is
+    /// still the sole source of properties and editable actions.
+    private func section(for groupKey: String) -> (key: String, title: String) {
+        switch groupKey {
+        case "context", "character", "mixed":
+            return ("section-selection", "Selection")
+        case "relationships", "scroll", "view", "container", "layout", "storage":
+            return ("section-system", "Text System")
+        case "typing", "attributes", "font", "foreground", "background",
+             "paragraph", "link":
+            return ("section-formatting", "Text Formatting")
+        case "tableCell", "table", "cellGeometry":
+            return ("section-tables", "Tables")
+        case "attachment", "image":
+            return ("section-attachments", "Attachments & Images")
+        default:
+            if groupKey.hasPrefix("list-") {
+                return ("section-formatting", "Text Formatting")
+            }
+            if groupKey.hasPrefix("imageRep-") {
+                return ("section-attachments", "Attachments & Images")
+            }
+            if groupKey.hasPrefix("run-") {
+                return ("section-runs", "Attribute Runs")
+            }
+            return ("section-other", "Other Objects")
+        }
+    }
+
+    /// Turn dotted property names into real outline paths. A property can
+    /// itself be a parent: padding.left retains its editable value while
+    /// padding.left.valueType appears beneath it.
+    private func propertyTree(_ properties: [InspectedProperty], groupKey: String) -> [InspectorNode] {
+        var roots: [InspectorNode] = []
+        var byPath: [String: InspectorNode] = [:]
+
+        for property in properties {
+            let components = property.name.split(separator: ".", omittingEmptySubsequences: false)
+                .map(String.init)
+            var parent: InspectorNode?
+            for (index, component) in components.enumerated() {
+                let path = components.prefix(index + 1).joined(separator: ".")
+                if let existing = byPath[path] {
+                    if index == components.count - 1 {
+                        existing.entry = .property(property)
+                    }
+                    parent = existing
+                    continue
+                }
+
+                let isLeaf = index == components.count - 1
+                let node = InspectorNode(
+                    key: "\(groupKey)-property-\(path)",
+                    entry: isLeaf ? .property(property) : .folder(component),
+                    displayName: component
+                )
+                if let parent {
+                    parent.children.append(node)
+                } else {
+                    roots.append(node)
+                }
+                byPath[path] = node
+                parent = node
+            }
+        }
+        return roots
+    }
+
+    private func expandableKeys(in roots: [InspectorNode]) -> Set<String> {
+        var keys: Set<String> = []
+        func collect(_ node: InspectorNode) {
+            if !node.children.isEmpty { keys.insert(node.key) }
+            for child in node.children { collect(child) }
+        }
+        for node in roots { collect(node) }
+        return keys
+    }
+
+    private func restoreExpansion(in roots: [InspectorNode], showAll: Bool) {
+        for node in roots where !node.children.isEmpty {
+            if showAll || expanded.contains(node.key) {
+                outline.expandItem(node)
+                restoreExpansion(in: node.children, showAll: showAll)
+            }
+        }
+    }
+
+    /// Rebuild the hierarchy without changing the underlying inspection data.
+    /// Searching retains matching ancestor nodes and temporarily opens their
+    /// paths, without overwriting the user's expansion preferences.
     private func render() {
         guard isViewLoaded, let snapshot else { return }
         let oldOffset = scroll.contentView.bounds.origin.y
@@ -234,19 +329,21 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         let columns = Int(snapshot.groups.first(where: { $0.key == "table" })?
             .properties.first(where: { $0.name == "numberOfColumns" })?.value ?? "") ?? 4
 
-        nodes = snapshot.groups.compactMap { group -> InspectorNode? in
-            let groupMatches = group.title.localizedCaseInsensitiveContains(term) ||
+        var sections: [String: InspectorNode] = [:]
+        for group in snapshot.groups {
+            let section = section(for: group.key)
+            let groupMatches = section.title.localizedCaseInsensitiveContains(term) ||
+                               group.title.localizedCaseInsensitiveContains(term) ||
                                group.object.localizedCaseInsensitiveContains(term)
-            let matchingProperties = group.properties.enumerated().filter { _, property in
+            let properties = group.properties.filter { property in
                 term.isEmpty || groupMatches ||
                 property.name.localizedCaseInsensitiveContains(term) ||
                 property.value.localizedCaseInsensitiveContains(term) ||
                 property.explanation.localizedCaseInsensitiveContains(term)
             }
-            guard term.isEmpty || groupMatches || !matchingProperties.isEmpty else { return nil }
-            let children = matchingProperties.map { index, property in
-                InspectorNode(key: "\(group.key)-property-\(index)", entry: .property(property))
-            }
+            guard term.isEmpty || groupMatches || !properties.isEmpty else { continue }
+
+            let children = propertyTree(properties, groupKey: group.key)
             let groupNode = InspectorNode(key: group.key, entry: .group(group), children: children)
             if group.key == "tableCell" && term.isEmpty,
                let row = Int(group.properties.first(where: { $0.name == "startingRow" })?.value ?? ""),
@@ -257,18 +354,28 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
                     at: 0
                 )
             }
-            return groupNode
+
+            if sections[section.key] == nil {
+                sections[section.key] = InspectorNode(
+                    key: section.key, entry: .category(section.title)
+                )
+            }
+            sections[section.key]?.children.append(groupNode)
         }
+
+        let order = [
+            "section-selection", "section-system", "section-formatting",
+            "section-tables", "section-attachments", "section-runs", "section-other"
+        ]
+        nodes = order.compactMap { sections[$0] }
 
         restoringExpansion = true
         outline.reloadData()
-        for node in nodes where !node.children.isEmpty && (term.isEmpty ? expanded.contains(node.key) : true) {
-            outline.expandItem(node)
-        }
+        restoreExpansion(in: nodes, showAll: !term.isEmpty)
         restoringExpansion = false
 
-        // Clamp after rows change so scrolling a long table selection cannot
-        // leave the inspector below its newly shortened content.
+        // Clamp after rows change so a shorter selection doesn't leave the
+        // inspector scrolled past the end of its current contents.
         let maxY = max(0, outline.bounds.height - scroll.contentView.bounds.height)
         scroll.contentView.scroll(to: NSPoint(x: 0, y: min(oldOffset, maxY)))
         scroll.reflectScrolledClipView(scroll.contentView)
@@ -302,7 +409,9 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
         guard let node = item as? InspectorNode else { return 30 }
         switch node.entry {
+        case .category: return 36
         case .group: return 34
+        case .folder: return 29
         case .property: return 31
         case let .cellGrid(_, _, rows, _): return CGFloat(min(max(rows, 1), 6) * 25 + 10)
         }
@@ -313,27 +422,42 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         let isName = tableColumn === nameColumn
 
         switch node.entry {
+        case let .category(title):
+            if isName {
+                return textCell(title, font: .systemFont(ofSize: 14, weight: .semibold),
+                                alignment: .left, color: .labelColor)
+            }
+            return textCell("", font: .systemFont(ofSize: 12),
+                            alignment: .left, color: .secondaryLabelColor)
         case let .group(group):
             if isName { return classHeaderCell(group) }
             return textCell(group.object,
                             font: .monospacedSystemFont(ofSize: 11, weight: .regular),
                             alignment: .left, color: .secondaryLabelColor)
+        case let .folder(label):
+            if isName {
+                return textCell(label, font: .systemFont(ofSize: 13, weight: .medium),
+                                alignment: .left, color: .secondaryLabelColor)
+            }
+            return textCell("", font: .systemFont(ofSize: 12),
+                            alignment: .left, color: .secondaryLabelColor)
         case let .property(property):
             if isName {
+                let label = node.displayName ?? property.name
                 let tooltip = property.explanation.isEmpty ? property.name :
                     "\(property.name)\n\(property.explanation)"
                 if property.name.contains(" → ") {
-                    return relationshipCell(property.name, tooltip: tooltip)
+                    return relationshipCell(label, tooltip: tooltip)
                 }
-                return textCell(property.name, font: .systemFont(ofSize: 13),
-                                alignment: .right, color: .secondaryLabelColor,
+                return textCell(label, font: .systemFont(ofSize: 13),
+                                alignment: .left, color: .secondaryLabelColor,
                                 tooltip: tooltip)
             }
             return valueCell(property)
         case let .cellGrid(row, column, rows, columns):
             if isName {
                 return textCell("Cell map", font: .systemFont(ofSize: 13),
-                                alignment: .right, color: .secondaryLabelColor)
+                                alignment: .left, color: .secondaryLabelColor)
             }
             return gridCell(row: row, column: column, rows: rows, columns: columns)
         }
@@ -517,7 +641,7 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
         switch node.entry {
         case let .property(property): value = property.value
         case let .group(group): value = group.object
-        case .cellGrid: return
+        case .category, .folder, .cellGrid: return
         }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
