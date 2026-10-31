@@ -1,55 +1,74 @@
 import AppKit
 
-private final class ClickButton: NSButton {
-    var pressed: (() -> Void)?
-    @objc func clicked(_ sender: Any?) { pressed?() }
-    convenience init(_ title: String, onPress: @escaping () -> Void) {
-        self.init(title: title, target: nil, action: nil)
-        self.pressed = onPress
-        target = self
-        action = #selector(clicked(_:))
-        bezelStyle = .inline
+/// A native, expandable two-column property grid. Rows are backed by actual
+/// InspectionSnapshot data, never by a parallel set of display-only values.
+private enum InspectorEntry {
+    case group(InspectionGroup)
+    case property(InspectedProperty)
+    case cellGrid(row: Int, column: Int, rows: Int, columns: Int)
+}
+
+private final class InspectorNode: NSObject {
+    let key: String
+    let entry: InspectorEntry
+    var children: [InspectorNode]
+
+    init(key: String, entry: InspectorEntry, children: [InspectorNode] = []) {
+        self.key = key
+        self.entry = entry
+        self.children = children
     }
 }
 
-private final class EditField: NSTextField {
+private final class InspectorEditField: NSTextField {
     var onApply: ((String) -> Void)?
-    @objc func apply(_ sender: Any?) { onApply?(stringValue) }
-    convenience init(_ value: String, onApply: @escaping (String) -> Void) {
+
+    @objc private func submit(_ sender: Any?) {
+        onApply?(stringValue)
+    }
+
+    convenience init(value: String, onApply: @escaping (String) -> Void) {
         self.init(string: value)
         self.onApply = onApply
-        self.target = self
-        self.action = #selector(apply(_:))
-        self.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        target = self
+        action = #selector(submit(_:))
+        font = .systemFont(ofSize: 13)
+        alignment = .left
+        lineBreakMode = .byTruncatingMiddle
     }
 }
 
-private final class FlippedDocumentView: NSView {
-    override var isFlipped: Bool { true }
-}
-
-final class InspectorViewController: NSViewController, NSSearchFieldDelegate {
+final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
+                                     NSOutlineViewDataSource, NSOutlineViewDelegate {
     var onEdit: ((PropertyAction, String) -> Void)?
+
     private var snapshot: InspectionSnapshot?
-    private var expanded: Set<String> = ["context", "relationships", "tableCell", "table", "attachment", "font"]
+    private var expanded: Set<String> = [
+        "context", "relationships", "tableCell", "table", "attachment", "font"
+    ]
     private var filter = ""
-    private let scroll = NSScrollView()
-    private let content = FlippedDocumentView()
-    private let stack = NSStackView()
+    private var nodes: [InspectorNode] = []
+    private var restoringExpansion = false
+    private var renderQueued = false
+
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let search = NSSearchField()
-    private var renderQueued = false
+    private let scroll = NSScrollView()
+    private let outline = NSOutlineView()
+    private let nameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("property"))
+    private let valueColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("value"))
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 445, height: 700))
-        root.wantsLayer = true
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 530, height: 700))
         root.translatesAutoresizingMaskIntoConstraints = false
         view = root
 
-        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
-        subtitleLabel.font = .systemFont(ofSize: 11)
+        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+        subtitleLabel.font = .systemFont(ofSize: 13)
         subtitleLabel.textColor = .secondaryLabelColor
+        search.font = .systemFont(ofSize: 13)
         search.placeholderString = "Filter classes or properties…"
         search.delegate = self
 
@@ -59,198 +78,316 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate {
         header.spacing = 7
         header.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(header)
-        for item in [titleLabel, subtitleLabel, search] { item.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true }
+        for item in [titleLabel, subtitleLabel, search] {
+            item.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
+        }
 
-        let expand = ClickButton("Expand All") { [weak self] in
-            guard let self else { return }
-            self.expanded = Set(self.snapshot?.groups.map(\.key) ?? [])
-            self.render()
-        }
-        let collapse = ClickButton("Collapse All") { [weak self] in
-            self?.expanded.removeAll()
-            self?.render()
-        }
+        let expand = NSButton(title: "Expand All", target: self, action: #selector(expandAll(_:)))
+        let collapse = NSButton(title: "Collapse All", target: self, action: #selector(collapseAll(_:)))
+        expand.bezelStyle = .inline
+        collapse.bezelStyle = .inline
+        expand.font = .systemFont(ofSize: 12)
+        collapse.font = .systemFont(ofSize: 12)
         let controls = NSStackView(views: [expand, collapse])
         controls.orientation = .horizontal
-        controls.spacing = 8
+        controls.spacing = 10
         controls.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(controls)
 
+        // Native AppKit outline/table control: disclosure triangles, a table
+        // header, user-adjustable column widths, keyboard navigation, and
+        // visible-row reuse rather than rebuilding hundreds of stack views.
+        nameColumn.title = "Property"
+        nameColumn.width = 195
+        nameColumn.minWidth = 140
+        valueColumn.title = "Value"
+        valueColumn.width = 330
+        valueColumn.minWidth = 160
+        outline.addTableColumn(nameColumn)
+        outline.addTableColumn(valueColumn)
+        outline.outlineTableColumn = nameColumn
+        outline.autoresizesOutlineColumn = false
+        outline.indentationPerLevel = 12
+        outline.rowHeight = 30
+        outline.allowsColumnResizing = true
+        outline.allowsColumnReordering = false
+        outline.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
+        outline.headerView = NSTableHeaderView()
+        outline.usesAlternatingRowBackgroundColors = true
+        outline.dataSource = self
+        outline.delegate = self
+
+        let contextMenu = NSMenu()
+        let copyItem = NSMenuItem(title: "Copy Value", action: #selector(copySelectedValue(_:)), keyEquivalent: "")
+        copyItem.target = self
+        contextMenu.addItem(copyItem)
+        outline.menu = contextMenu
+
+        scroll.documentView = outline
         scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
         scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(scroll)
 
-        content.frame = NSRect(x: 0, y: 0, width: 400, height: 600)
-        scroll.documentView = content
-        stack.orientation = .vertical
-        stack.alignment = .width
-        stack.distribution = .fill
-        stack.spacing = 7
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(stack)
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 16),
-            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
-            controls.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
+            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
+            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            controls.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 10),
             controls.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            scroll.topAnchor.constraint(equalTo: controls.bottomAnchor, constant: 9),
+            scroll.topAnchor.constraint(equalTo: controls.bottomAnchor, constant: 8),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12)
+            scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor)
         ])
     }
 
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        remeasure()
-    }
-
-    func controlTextDidChange(_ obj: Notification) {
+    func controlTextDidChange(_ notification: Notification) {
         filter = search.stringValue
         render()
     }
 
     func update(_ new: InspectionSnapshot) {
         snapshot = new
-        if !isViewLoaded { loadViewIfNeeded() }
+        loadViewIfNeeded()
         titleLabel.stringValue = new.summary
         subtitleLabel.stringValue = new.subtitle
-        if !renderQueued {
-            renderQueued = true
-            DispatchQueue.main.async { [weak self] in
-                self?.renderQueued = false
-                self?.render()
-            }
+        guard !renderQueued else { return }
+        renderQueued = true
+        DispatchQueue.main.async { [weak self] in
+            self?.renderQueued = false
+            self?.render()
         }
     }
 
+    @objc private func expandAll(_ sender: Any?) {
+        expanded = Set(snapshot?.groups.map(\.key) ?? [])
+        render()
+    }
+
+    @objc private func collapseAll(_ sender: Any?) {
+        expanded.removeAll()
+        render()
+    }
+
+    /// Rebuild the lightweight row model, retaining which sections were open
+    /// and the outline's vertical scroll position.
     private func render() {
         guard isViewLoaded, let snapshot else { return }
-        let yOffset = scroll.contentView.bounds.origin.y
-        for item in stack.arrangedSubviews { stack.removeArrangedSubview(item); item.removeFromSuperview() }
-        for group in snapshot.groups {
-            let matched = group.title.localizedCaseInsensitiveContains(filter)
-                || group.properties.contains(where: {
-                    $0.name.localizedCaseInsensitiveContains(filter) || $0.value.localizedCaseInsensitiveContains(filter)
-                })
-            if !filter.isEmpty && !matched { continue }
-            stack.addArrangedSubview(groupView(group, searchActive: !filter.isEmpty))
+        let oldOffset = scroll.contentView.bounds.origin.y
+        let term = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let rows = Int(snapshot.groups.first(where: { $0.key == "table" })?
+            .properties.first(where: { $0.name == "numberOfRows" })?.value ?? "") ?? 4
+        let columns = Int(snapshot.groups.first(where: { $0.key == "table" })?
+            .properties.first(where: { $0.name == "numberOfColumns" })?.value ?? "") ?? 4
+
+        nodes = snapshot.groups.compactMap { group -> InspectorNode? in
+            let groupMatches = group.title.localizedCaseInsensitiveContains(term) ||
+                               group.object.localizedCaseInsensitiveContains(term)
+            let matchingProperties = group.properties.enumerated().filter { _, property in
+                term.isEmpty || groupMatches ||
+                property.name.localizedCaseInsensitiveContains(term) ||
+                property.value.localizedCaseInsensitiveContains(term) ||
+                property.explanation.localizedCaseInsensitiveContains(term)
+            }
+            guard term.isEmpty || groupMatches || !matchingProperties.isEmpty else { return nil }
+            let children = matchingProperties.map { index, property in
+                InspectorNode(key: "\(group.key)-property-\(index)", entry: .property(property))
+            }
+            let groupNode = InspectorNode(key: group.key, entry: .group(group), children: children)
+            if group.key == "tableCell" && term.isEmpty,
+               let row = Int(group.properties.first(where: { $0.name == "startingRow" })?.value ?? ""),
+               let column = Int(group.properties.first(where: { $0.name == "startingColumn" })?.value ?? "") {
+                groupNode.children.insert(
+                    InspectorNode(key: "table-cell-map",
+                                  entry: .cellGrid(row: row, column: column, rows: rows, columns: columns)),
+                    at: 0
+                )
+            }
+            return groupNode
         }
-        remeasure()
-        let maxOffset = max(0, (scroll.documentView?.frame.height ?? 0) - scroll.contentView.bounds.height)
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: min(yOffset, maxOffset)))
+
+        restoringExpansion = true
+        outline.reloadData()
+        for node in nodes where !node.children.isEmpty && (term.isEmpty ? expanded.contains(node.key) : true) {
+            outline.expandItem(node)
+        }
+        restoringExpansion = false
+
+        // Clamp after rows change so scrolling a long table selection cannot
+        // leave the inspector below its newly shortened content.
+        let maxY = max(0, outline.bounds.height - scroll.contentView.bounds.height)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: min(oldOffset, maxY)))
         scroll.reflectScrolledClipView(scroll.contentView)
     }
 
-    private func remeasure() {
-        guard isViewLoaded else { return }
-        let width = max(260, scroll.contentView.bounds.width)
-        content.frame.size.width = width
-        let wanted = max(stack.fittingSize.height + 20, scroll.contentView.bounds.height)
-        if abs(content.frame.height - wanted) > 0.5 { content.frame.size.height = wanted }
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        (item as? InspectorNode)?.children.count ?? nodes.count
     }
 
-    private func groupView(_ group: InspectionGroup, searchActive: Bool) -> NSView {
-        let open = expanded.contains(group.key) || searchActive
-        let outer = NSStackView()
-        outer.orientation = .vertical
-        outer.alignment = .width
-        outer.spacing = 3
-        outer.edgeInsets = NSEdgeInsets(top: 7, left: 7, bottom: 7, right: 7)
-        outer.wantsLayer = true
-        outer.layer?.cornerRadius = 6
-        outer.layer?.borderWidth = 0.7
-        outer.layer?.borderColor = NSColor.separatorColor.cgColor
-        outer.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        if let parent = item as? InspectorNode { return parent.children[index] }
+        return nodes[index]
+    }
 
-        let toggle = ClickButton((open ? "▾ " : "▸ ") + group.title) { [weak self] in
-            guard let self else { return }
-            if self.expanded.contains(group.key) { self.expanded.remove(group.key) }
-            else { self.expanded.insert(group.key) }
-            self.render()
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        (item as? InspectorNode)?.children.isEmpty == false
+    }
+
+    func outlineViewItemDidExpand(_ notification: Notification) {
+        guard !restoringExpansion,
+              let node = notification.userInfo?["NSObject"] as? InspectorNode else { return }
+        expanded.insert(node.key)
+    }
+
+    func outlineViewItemDidCollapse(_ notification: Notification) {
+        guard !restoringExpansion,
+              let node = notification.userInfo?["NSObject"] as? InspectorNode else { return }
+        expanded.remove(node.key)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        guard let node = item as? InspectorNode else { return 30 }
+        switch node.entry {
+        case .group: return 34
+        case .property: return 31
+        case let .cellGrid(_, _, rows, _): return CGFloat(min(max(rows, 1), 6) * 25 + 10)
         }
-        toggle.font = .systemFont(ofSize: 12, weight: .semibold)
-        toggle.alignment = .left
-        outer.addArrangedSubview(toggle)
+    }
 
-        if open {
-            let identity = NSTextField(wrappingLabelWithString: group.object)
-            identity.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-            identity.textColor = .secondaryLabelColor
-            identity.toolTip = group.object
-            outer.addArrangedSubview(identity)
-            if group.key == "tableCell" && filter.isEmpty,
-               let row = Int(group.properties.first(where: { $0.name == "startingRow" })?.value ?? ""),
-               let col = Int(group.properties.first(where: { $0.name == "startingColumn" })?.value ?? "") {
-                outer.addArrangedSubview(tableGrid(selectedRow: row, selectedColumn: col))
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        guard let node = item as? InspectorNode, let tableColumn else { return nil }
+        let isName = tableColumn === nameColumn
+
+        switch node.entry {
+        case let .group(group):
+            return textCell(isName ? group.title : group.object,
+                            font: isName ? .systemFont(ofSize: 13, weight: .semibold)
+                                         : .monospacedSystemFont(ofSize: 11, weight: .regular),
+                            alignment: .left,
+                            color: isName ? .labelColor : .secondaryLabelColor)
+        case let .property(property):
+            if isName {
+                return textCell(property.name, font: .systemFont(ofSize: 13),
+                                alignment: .right, color: .secondaryLabelColor,
+                                tooltip: property.explanation.isEmpty ? property.name :
+                                    "\(property.name)\n\(property.explanation)")
             }
-            for prop in group.properties where filter.isEmpty ||
-                group.title.localizedCaseInsensitiveContains(filter) ||
-                prop.name.localizedCaseInsensitiveContains(filter) || prop.value.localizedCaseInsensitiveContains(filter) {
-                outer.addArrangedSubview(propertyView(prop))
+            return valueCell(property)
+        case let .cellGrid(row, column, rows, columns):
+            if isName {
+                return textCell("Cell map", font: .systemFont(ofSize: 13),
+                                alignment: .right, color: .secondaryLabelColor)
             }
+            return gridCell(row: row, column: column, rows: rows, columns: columns)
         }
-        return outer
     }
 
-    private func tableGrid(selectedRow: Int, selectedColumn: Int) -> NSView {
-        let grid = NSGridView(views: (0..<4).map { r in
-            (0..<4).map { c -> NSView in
-                let cell = NSTextField(labelWithString: "\(r + 1),\(c + 1)")
-                cell.font = .monospacedSystemFont(ofSize: 10, weight: r == selectedRow && c == selectedColumn ? .semibold : .regular)
-                cell.alignment = .center
-                cell.wantsLayer = true
-                cell.layer?.cornerRadius = 3
-                cell.layer?.backgroundColor = (r == selectedRow && c == selectedColumn
-                    ? NSColor.selectedControlColor : NSColor.windowBackgroundColor).cgColor
-                return cell
-            }
-        })
-        grid.rowSpacing = 3
-        grid.columnSpacing = 3
-        return grid
-    }
-
-    private func propertyView(_ property: InspectedProperty) -> NSView {
-        let line = NSStackView()
-        line.orientation = .horizontal
-        line.alignment = .centerY
-        line.spacing = 6
-        let label = NSTextField(labelWithString: property.name)
-        label.font = .systemFont(ofSize: 10)
-        label.textColor = .secondaryLabelColor
+    private func textCell(_ value: String, font: NSFont, alignment: NSTextAlignment,
+                          color: NSColor, tooltip: String? = nil) -> NSView {
+        let container = NSTableCellView()
+        let label = NSTextField(labelWithString: value)
+        label.font = font
+        label.alignment = alignment
+        label.textColor = color
         label.lineBreakMode = .byTruncatingMiddle
-        label.toolTip = property.explanation.isEmpty ? property.name : "\(property.name)\n\(property.explanation)"
-        label.widthAnchor.constraint(equalToConstant: 144).isActive = true
-        line.addArrangedSubview(label)
+        label.toolTip = tooltip ?? value
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+        container.textField = label
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+        return container
+    }
 
+    private func valueCell(_ property: InspectedProperty) -> NSView {
+        let container = NSTableCellView()
+        let value: NSTextField
         if let action = property.action {
-            let field = EditField(property.value) { [weak self] input in self?.onEdit?(action, input) }
-            field.toolTip = "Edit: \(property.explanation)\nPress Return to apply."
-            line.addArrangedSubview(field)
+            let editable = InspectorEditField(value: property.value) { [weak self] input in
+                self?.onEdit?(action, input)
+            }
+            editable.toolTip = "Editable: \(property.explanation)\nPress Return to apply."
+            value = editable
         } else {
-            let field = NSTextField(labelWithString: property.value)
-            field.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-            field.lineBreakMode = .byTruncatingMiddle
-            field.toolTip = property.value + (property.explanation.isEmpty ? "" : "\n" + property.explanation)
-            line.addArrangedSubview(field)
-            let copy = ClickButton("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(property.value, forType: .string) }
-            copy.font = .systemFont(ofSize: 9)
-            line.addArrangedSubview(copy)
+            let label = NSTextField(labelWithString: property.value)
+            label.font = .systemFont(ofSize: 13)
+            label.alignment = .left
+            label.lineBreakMode = .byTruncatingMiddle
+            label.toolTip = property.value + (property.explanation.isEmpty ? "" : "\n" + property.explanation)
+            value = label
         }
         let origin = NSTextField(labelWithString: property.origin.rawValue)
-        origin.font = .systemFont(ofSize: 8)
+        origin.font = .systemFont(ofSize: 10)
+        origin.alignment = .right
         origin.textColor = .tertiaryLabelColor
-        origin.widthAnchor.constraint(equalToConstant: 39).isActive = true
-        line.addArrangedSubview(origin)
-        return line
+        origin.setContentHuggingPriority(.required, for: .horizontal)
+        origin.setContentCompressionResistancePriority(.required, for: .horizontal)
+        value.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        value.translatesAutoresizingMaskIntoConstraints = false
+        origin.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(value)
+        container.addSubview(origin)
+        container.textField = value
+        NSLayoutConstraint.activate([
+            value.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
+            value.trailingAnchor.constraint(equalTo: origin.leadingAnchor, constant: -7),
+            value.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            origin.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            origin.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+        return container
+    }
+
+    /// The small cell map is a specialized value view inside the same grid.
+    /// Cap its dimensions; the actual source table can have more rows/columns.
+    private func gridCell(row: Int, column: Int, rows: Int, columns: Int) -> NSView {
+        let container = NSTableCellView()
+        let displayRows = min(max(rows, 1), 6)
+        let displayColumns = min(max(columns, 1), 6)
+        let grid = NSGridView(views: (0..<displayRows).map { r in
+            (0..<displayColumns).map { c -> NSView in
+                let field = NSTextField(labelWithString: "\(r + 1),\(c + 1)")
+                field.font = .monospacedSystemFont(ofSize: 11,
+                    weight: (r == row && c == column) ? .semibold : .regular)
+                field.alignment = .center
+                field.wantsLayer = true
+                field.layer?.cornerRadius = 3
+                field.layer?.backgroundColor = (r == row && c == column
+                    ? NSColor.selectedControlColor : NSColor.controlBackgroundColor).cgColor
+                field.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
+                field.heightAnchor.constraint(equalToConstant: 23).isActive = true
+                return field
+            }
+        })
+        grid.rowSpacing = 2
+        grid.columnSpacing = 2
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
+            grid.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            grid.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -4)
+        ])
+        return container
+    }
+
+    @objc private func copySelectedValue(_ sender: Any?) {
+        let row = outline.clickedRow >= 0 ? outline.clickedRow : outline.selectedRow
+        guard row >= 0, let node = outline.item(atRow: row) as? InspectorNode else { return }
+        let value: String
+        switch node.entry {
+        case let .property(property): value = property.value
+        case let .group(group): value = group.object
+        case .cellGrid: return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 }
