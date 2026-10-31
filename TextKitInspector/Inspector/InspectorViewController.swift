@@ -608,12 +608,22 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
                 let label = node.displayName ?? property.name
                 let tooltip = property.explanation.isEmpty ? property.name :
                     "\(property.name)\n\(property.explanation)"
+                let cell: NSView
                 if property.name.contains(" → ") {
-                    return relationshipCell(label, tooltip: tooltip)
+                    cell = relationshipCell(label, tooltip: tooltip)
+                } else {
+                    cell = textCell(label, font: .systemFont(ofSize: 13),
+                                    alignment: .left, color: .secondaryLabelColor,
+                                    tooltip: tooltip)
                 }
-                return textCell(label, font: .systemFont(ofSize: 13),
-                                alignment: .left, color: .secondaryLabelColor,
-                                tooltip: tooltip)
+                if let key = containingGroupKey(for: node),
+                   let url = InspectorAppleDocumentation.url(for: property, groupKey: key),
+                   let nameCell = cell as? FlexibleInspectorCell {
+                    let info = InspectorDocumentationButton(url: url, symbol: property.name)
+                    nameCell.addSubview(info)
+                    nameCell.documentationButton = info
+                }
+                return cell
             }
             return valueCell(property)
         case let .cellGrid(row, column, rows, columns):
@@ -623,6 +633,18 @@ final class InspectorViewController: NSViewController, NSSearchFieldDelegate,
             }
             return gridCell(row: row, column: column, rows: rows, columns: columns)
         }
+    }
+
+    private func containingGroupKey(for node: InspectorNode) -> String? {
+        var item: Any = node
+        while let parent = outline.parent(forItem: item) {
+            if let candidate = parent as? InspectorNode,
+               case let .group(group) = candidate.entry {
+                return group.key
+            }
+            item = parent
+        }
+        return nil
     }
 
     // Each class has a stable colour in the inspector. The coloured rail keeps
